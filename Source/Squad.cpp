@@ -970,23 +970,23 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     bool enemyMostlyTanks = enemyCount > 0 &&
         (double)tankCount / enemyCount >= 0.65;
 
-    bool nearNexus = false;
+    bool nearStaticDef = false;
 
     for (BWAPI::Unit u : BWAPI::Broodwar->self()->getUnits())
     {
-        if (u->getType() == BWAPI::UnitTypes::Protoss_Nexus)
+        if (u->getType() == BWAPI::UnitTypes::Protoss_Nexus && u->isPowered())
         {
-            if (cluster.center.getDistance(u->getPosition()) < 15 * 32)
+            if (cluster.center.getDistance(u->getPosition()) < 10 * 32)
             {
-                nearNexus = true;
+                nearStaticDef = true;
                 break;
             }
         }
     }
 
-    if (mostlyZealots && enemyMostlyTanks && nearNexus)
+    if (mostlyZealots && enemyMostlyTanks && nearStaticDef)
     {
-        _regroupStatus = yellow + std::string("Hold near Nexus vs tanks");
+        _regroupStatus = yellow + std::string("Hold near Cannons vs tanks");
         return false; // DO NOT REGROUP, try to force attack
     }
     

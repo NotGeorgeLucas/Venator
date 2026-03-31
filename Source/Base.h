@@ -37,10 +37,10 @@ private:
     int					failedPlacements;	// count building placements that failed
 
     bool                findIsStartingBase() const;	// to initialize the startingBase flag
-    BWAPI::TilePosition findFront() const;
     BWAPI::Position     findMineralOffset() const;
 
 public:
+    BWAPI::TilePosition findFront() const;
 
     // The resourceDepot pointer is set for a base if the depot has been seen.
     // It is possible to infer a base location without seeing the depot.

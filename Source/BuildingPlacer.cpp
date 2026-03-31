@@ -586,6 +586,14 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(const Building & b) cons
     {
         tile = findPylonlessBaseLocation(b);
     }
+    /* CODE ADDED */
+    else if (b.type == BWAPI::UnitTypes::Protoss_Forge && b.macroLocation == MacroLocation::Front) {
+        tile = findForgeLocation(b);
+    }
+    else if (b.type == BWAPI::UnitTypes::Protoss_Photon_Cannon)
+    {
+        tile = findCanonLocation(b);
+    }
     else
     {
         tile = findGroupedLocation(b);
@@ -593,6 +601,139 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(const Building & b) cons
 
     return tile;
 }
+
+/* CODE ADDED */
+BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b) const
+{
+    BWAPI::TilePosition natStart = the.bases.myNatural()->getTilePosition();
+    BWAPI::TilePosition frontStart = the.bases.myNatural()->findFront();
+
+    BWAPI::TilePosition frontVector = frontStart - natStart;
+
+    BWAPI::TilePosition start = frontStart + frontVector;
+
+    int bestScore = INT_MIN;
+    BWAPI::TilePosition bestPos = BWAPI::TilePositions::None;
+
+    // Try a 7x7 area in around the starting point
+    for (int dx = -3; dx <= 3; ++dx)
+    {
+        for (int dy = -3; dy <= 3; ++dy)
+        {
+            BWAPI::TilePosition candidate = start + BWAPI::TilePosition(dx, dy);
+            if (candidate.isValid() &&
+                canBuildWithSpace(candidate, b, 0) &&
+                isWallAdjacent(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+    return findGroupedLocation(b);
+}
+
+BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) const
+{
+    BWAPI::TilePosition forgeTile = getNearestBuildingTile(the.bases.frontTile(), BWAPI::UnitTypes::Protoss_Forge);
+
+    BWAPI::TilePosition start;
+    if (forgeTile != BWAPI::TilePositions::None)
+    {
+        start = forgeTile;
+    }
+    else
+    {
+        return findGroupedLocation(b);
+    }
+
+    BWAPI::TilePosition bestTile = BWAPI::TilePositions::None;
+    int bestScore = INT_MAX;
+
+    // Scan 5x5 grid around the Forge
+    for (int dx = -2; dx <= 2; ++dx)
+    {
+        for (int dy = -2; dy <= 2; ++dy)
+        {
+            BWAPI::TilePosition t = start + BWAPI::TilePosition(dx, dy);
+            if (!t.isValid()) continue;
+            if (!canBuildWithSpace(t, b, 0)) continue;
+            if (t.getDistance(the.bases.myNatural()->getTilePosition()) < 3) continue;
+
+            int score = getDistanceToClosestMineral(t);
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestTile = t;
+            }
+        }
+    }
+
+    if (bestTile != BWAPI::TilePositions::None)
+    {
+        return bestTile;
+    }
+
+    // fallback
+    return findGroupedLocation(b);
+}
+
+int BuildingPlacer::getDistanceToClosestMineral(const BWAPI::TilePosition& tile) const
+{
+    int bestDist = INT_MAX;
+    BWAPI::Position pos(tile);
+
+    for (BWAPI::Unit mineral : BWAPI::Broodwar->getMinerals())
+    {
+        int dist = pos.getApproxDistance(mineral->getPosition());
+        if (dist < bestDist) bestDist = dist;
+    }
+
+    return bestDist;
+}
+
+BWAPI::TilePosition BuildingPlacer::getNearestBuildingTile(const BWAPI::TilePosition& tile, const BWAPI::UnitType bType) const
+{
+    BWAPI::TilePosition closestTile = BWAPI::TilePositions::None;
+    int bestDist = INT_MAX;
+
+    for (BWAPI::Unit unit : the.self()->getUnits())
+    {
+        if (unit->getType() == bType)
+        {
+            int dist = unit->getDistance(BWAPI::Position(tile));
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                closestTile = unit->getTilePosition();
+            }
+        }
+    }
+
+    return closestTile;
+}
+
+bool BuildingPlacer::isWallAdjacent(const BWAPI::TilePosition& tile) const
+{
+    std::vector<BWAPI::TilePosition> neighbors = {
+        tile + BWAPI::TilePosition(0, -1),
+        tile + BWAPI::TilePosition(0, 1),
+        tile + BWAPI::TilePosition(-1, 0),
+        tile + BWAPI::TilePosition(1, 0)
+    };
+
+    int wallCount = 0;
+    for (const auto& n : neighbors)
+    {
+        if (!n.isValid() || !_buildable.at(n.x, n.y)) wallCount++;
+    }
+
+    BWAPI::Broodwar->printf("Tile (%d,%d) has %d wall-adjacent tiles", tile.x, tile.y, wallCount);
+
+    return wallCount == 1;
+}
+
+
+/* END OF CODE ADDED */
 
 BWAPI::TilePosition BuildingPlacer::findAnyLocation(const Building & b, int extraSpace) const
 {
