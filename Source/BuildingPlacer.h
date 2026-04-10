@@ -40,12 +40,13 @@ class BuildingPlacer
     BWAPI::TilePosition findEdgeLocation(const Building & b) const;
     BWAPI::TilePosition findPylonlessBaseLocation(const Building & b) const;
     BWAPI::TilePosition findGroupedLocation(const Building & b) const;
-    BWAPI::TilePosition findSpecialLocation(const Building & b) const;
+    BWAPI::TilePosition findSpecialLocation(const Building & b);
     BWAPI::TilePosition findAnyLocation(const Building & b, int extraSpace) const;
 
     /* CODE ADDED */
     BWAPI::TilePosition findForgeLocation(const Building& b) const;
     BWAPI::TilePosition findCanonLocation(const Building& b) const;
+    BWAPI::TilePosition findSafeLocation(const Building& b);
     BWAPI::TilePosition getNearestBuildingTile(const BWAPI::TilePosition& tile, const BWAPI::UnitType) const;
     bool isWallAdjacent(const BWAPI::TilePosition& tile, const BWAPI::UnitType& building) const;
     int getDistanceToClosestMineral(const BWAPI::TilePosition& tile) const;
@@ -54,6 +55,17 @@ class BuildingPlacer
     bool wallsOnLeft(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
     bool wallsOnBottom(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
 
+    struct MapBox {
+        int x, y, w, h;
+        BWAPI::Color c;
+    };
+    struct MapLine {
+        int x1, y1, x2, y2;
+        BWAPI::Color c;
+    };
+
+    std::vector<MapBox> boxesToDraw = {};
+    std::vector<MapLine> linesToDraw = {};
 
     int     countInRange(const BWAPI::Unitset & units, BWAPI::Position xy, int range) const;
 
@@ -63,7 +75,7 @@ public:
     void initialize();
 
     // Return a build location near a building's desired location, with the given margin of space.
-    BWAPI::TilePosition	getBuildLocationNear(const Building & b, int extraSpace) const;
+    BWAPI::TilePosition	getBuildLocationNear(const Building & b, int extraSpace);
 
     void				reserveTiles(const BWAPI::TilePosition & position, int width, int height);
     void				freeTiles(const BWAPI::TilePosition & position, int width, int height);

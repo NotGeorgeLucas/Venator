@@ -368,14 +368,14 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
     /* CODE ADDED */
     if (rangedType == BWAPI::UnitTypes::Protoss_Carrier) {
         if (targetType == BWAPI::UnitTypes::Terran_Goliath 
-         || targetType == BWAPI::UnitTypes::Terran_Marine
          || targetType == BWAPI::UnitTypes::Terran_Missile_Turret) {
             return 12;      // Prioritize anything that shoots air
         }
         else if (targetType == BWAPI::UnitTypes::Terran_Armory) {
             return 11;      // Destroy the means of goliath production if possible
         }
-        else if (targetType == BWAPI::UnitTypes::Terran_Vulture) {
+        else if (targetType == BWAPI::UnitTypes::Terran_Vulture
+            || targetType == BWAPI::UnitTypes::Terran_Marine) {
             return 10;
         }
         else if (targetType.isWorker()) {
