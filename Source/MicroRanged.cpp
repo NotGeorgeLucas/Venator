@@ -140,6 +140,9 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
         {
             continue;
         }
+        if (target->getType() == BWAPI::UnitTypes::Zerg_Overlord && rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
+            continue; // For some reason they don't attack those anyway
+        }
 
         const int priority = getAttackPriority(rangedUnit, target);		// 0..12
         const int range = rangedUnit->getDistance(target);				// 0..map diameter in pixels
@@ -162,6 +165,10 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
         // Let's say that 1 priority step is worth 160 pixels (5 tiles).
         // We care about unit-target range and target-order position distance.
         int score = 5 * 32 * priority - range;
+
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
+            score += priority * 40;  // REALLY focus on the prioritized targets
+        }
 
         // Adjust for special features.
         // A bonus for attacking enemies that are "in front".
@@ -225,10 +232,12 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
         if (target->getType().getRace() == BWAPI::Races::Protoss && target->getShields() <= 5)
         {
             score += 32;
+            if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) { score += 16; }    // Try to focus more on lower HP units as carriers
         }
         if (target->getHitPoints() < target->getType().maxHitPoints())
         {
             score += 24;
+            if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) { score += 8; }    // Try to focus more on lower HP units as carriers
         }
 
         // Prefer to hit air units that have acid spores on them from devourers.
@@ -366,16 +375,26 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
 
 
     /* CODE ADDED */
+    bool isUsingArbiters = the.my.completed.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal) > 0;
     if (rangedType == BWAPI::UnitTypes::Protoss_Carrier) {
         if (targetType == BWAPI::UnitTypes::Terran_Goliath 
-         || targetType == BWAPI::UnitTypes::Terran_Missile_Turret) {
+         || targetType == BWAPI::UnitTypes::Terran_Missile_Turret
+         || (targetType.isWorker() && target->isConstructing() && (target->getBuildType() == BWAPI::UnitTypes::Terran_Missile_Turret))
+            
+         || targetType == BWAPI::UnitTypes::Zerg_Hydralisk) {
             return 12;      // Prioritize anything that shoots air
         }
-        else if (targetType == BWAPI::UnitTypes::Terran_Armory) {
-            return 11;      // Destroy the means of goliath production if possible
+        else if (targetType == BWAPI::UnitTypes::Terran_Armory
+            || (isUsingArbiters && targetType == BWAPI::UnitTypes::Terran_Science_Vessel)
+            || (targetType.isWorker() && target->isConstructing() && (target->getBuildType() == BWAPI::UnitTypes::Terran_Armory))
+
+            || targetType == BWAPI::UnitTypes::Zerg_Mutalisk) {
+            return 11;      // Destroy the means of goliath production if possible or the science vessels if we have reavers
         }
         else if (targetType == BWAPI::UnitTypes::Terran_Vulture
-            || targetType == BWAPI::UnitTypes::Terran_Marine) {
+            || targetType == BWAPI::UnitTypes::Terran_Marine
+            
+            || targetType == BWAPI::UnitTypes::Zerg_Defiler) {
             return 10;
         }
         else if (targetType.isWorker()) {

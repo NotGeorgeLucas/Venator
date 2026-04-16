@@ -44,12 +44,13 @@ class BuildingPlacer
     BWAPI::TilePosition findAnyLocation(const Building & b, int extraSpace) const;
 
     /* CODE ADDED */
-    BWAPI::TilePosition findForgeLocation(const Building& b) const;
+    BWAPI::TilePosition findForgeLocation(const Building& b);
     BWAPI::TilePosition findCanonLocation(const Building& b) const;
     BWAPI::TilePosition findSafeLocation(const Building& b);
     BWAPI::TilePosition getNearestBuildingTile(const BWAPI::TilePosition& tile, const BWAPI::UnitType) const;
     bool isWallAdjacent(const BWAPI::TilePosition& tile, const BWAPI::UnitType& building) const;
     int getDistanceToClosestMineral(const BWAPI::TilePosition& tile) const;
+    bool tileHasBuilding(int x, int y) const;
     bool wallsOnTop(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
     bool wallsOnRight(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
     bool wallsOnLeft(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;

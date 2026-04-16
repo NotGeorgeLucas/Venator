@@ -146,13 +146,27 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     int numCarriers = the.my.all.count(BWAPI::UnitTypes::Protoss_Carrier);
 
 
-    bool hasStargate = the.my.completed.count(BWAPI::UnitTypes::Protoss_Stargate) > 0;
 
-    // ADDED CODE
+    // CODE ADDED
+    bool hasStargate = the.my.completed.count(BWAPI::UnitTypes::Protoss_Stargate) > 0;
     int numStargate = the.my.completed.count(BWAPI::UnitTypes::Protoss_Stargate);
+    int numArbiter = the.my.all.count(BWAPI::UnitTypes::Protoss_Arbiter);
+    int numHighTemplar = the.my.all.count(BWAPI::UnitTypes::Protoss_High_Templar);
+
+    int numArbiterTrib = the.my.all.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal);
+    int numArchives = the.my.all.count(BWAPI::UnitTypes::Protoss_Templar_Archives);
+    int numCitadel = the.my.all.count(BWAPI::UnitTypes::Protoss_Citadel_of_Adun);
 
     bool hasCarrierCondition = the.my.completed.count(BWAPI::UnitTypes::Protoss_Stargate) > 0
                             && the.my.completed.count(BWAPI::UnitTypes::Protoss_Fleet_Beacon) > 0;
+
+    bool hasArbiterCondition = the.my.completed.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal) > 1;
+
+    int enemyGoliathCount= InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Terran_Goliath, the.enemy());
+
+    int enemyHydraCount= InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Hydralisk, the.enemy());
+    int enemyZerglingCount= InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Zergling, the.enemy());
+
 
     int maxProbes = WorkerManager::Instance().getMaxWorkers();
 
@@ -249,13 +263,22 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     {
         if (numNexusAll < 2) {
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusAll + 1));
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 3));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
         }
         if (hasCarrierCondition)
         {
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 2));
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, 1));
+            if (!hasArbiterCondition || numCarriers <= 4) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 2));
+            }
+            else {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + numStargate -1));
+            }
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + 1));
+
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Weapons, 2));
+
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Pylon, 1));
         }
         else {
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Fleet_Beacon, 1));
@@ -263,8 +286,78 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, 2));
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
         }
-        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 6));
-        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusAll + 1));
+
+
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, 1));
+
+        if (the.enemyRace() == BWAPI::Races::Terran) {
+            // Produce ground infantry based on the knwon enemy goliath counts
+            if (enemyGoliathCount <= 5) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 6));
+            }
+            else {
+                goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
+
+                if (enemyGoliathCount <= 15) {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 2));
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 3));
+                }
+                else {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 6));
+                }
+            }
+        }
+        else if (the.enemyRace() == BWAPI::Races::Zerg) {
+            // Anti-zerg infantry
+            if (enemyHydraCount < 6) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 8));
+            }
+            else {
+                if (numArchives < 1) {
+                    goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 6));
+                }
+
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Citadel_of_Adun, 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Templar_Archives, 1));
+                goal.push_back(MetaPair(BWAPI::TechTypes::Psionic_Storm, 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, numHighTemplar + 2));
+            }
+
+            if (enemyZerglingCount >= 8 && numZealots < 4) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 6));
+            }
+        }
+
+        // Start expanding if we have enough carriers to make a solid defense
+        if (numCarriers >= 4) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusAll + 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
+        }
+
+        // Research zealot upgrades if we have citadel
+        if (numCitadel > 0) {
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Leg_Enhancements, 1));     // Leg enhancements can be good since we use zealots as ground troops
+
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Ground_Armor, 2)); // Other ground unit upgrades are also useful
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Ground_Weapons, 1));
+        }
+
+        if (numNexusAll >= 3 || numCarriers >= 5) {
+            // try to go for arbiters lategame
+
+            if (hasArbiterCondition) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter, numArbiter + 1));
+            }
+            else {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Citadel_of_Adun, 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Templar_Archives, 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal, 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter, numArbiter + 2));
+            }
+        }
+
+        goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Plasma_Shields, 1)); // Casual point into shields
     }
     else
     {

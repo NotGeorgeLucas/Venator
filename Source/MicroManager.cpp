@@ -700,7 +700,7 @@ void MicroManager::drawOrderText()
     {
         for (BWAPI::Unit unit : _units)
         {
-            BWAPI::Broodwar->drawTextMap(unit->getPosition().x, unit->getPosition().y, "%s", (order->getStatus() 
+            BWAPI::Broodwar->drawTextMap(unit->getPosition().x, unit->getPosition().y, "%s", (order->getStatus()
                 + "\n Tanks: " + std::to_string(enemyTankSquadSize)
                 + "\n Total: " + std::to_string(enemySquadSize)).c_str());
         }
