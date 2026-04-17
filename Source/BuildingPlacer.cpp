@@ -757,7 +757,7 @@ int BuildingPlacer::getDistanceToClosestMineral(const BWAPI::TilePosition& tile)
 
     for (BWAPI::Unit mineral : BWAPI::Broodwar->getMinerals())
     {
-        int dist = pos.getApproxDistance(mineral->getPosition());
+        int dist = pos.getApproxDistance(mineral->getPosition() / 32);
         if (dist < bestDist) bestDist = dist;
     }
 

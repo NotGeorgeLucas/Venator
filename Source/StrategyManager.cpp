@@ -287,13 +287,22 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
         }
 
+        // Goliaths destroy carriers. We might want to try dropping something to blow them up
+        //if (numCarriers >= 2) {
+        //    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Shuttle, 1));
+        //    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, 1));
+        //    goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
+        //}
 
-        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, 1));
+
+        if (numCarriers >= 5) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, 1));
+        }
 
         if (the.enemyRace() == BWAPI::Races::Terran) {
             // Produce ground infantry based on the knwon enemy goliath counts
             if (enemyGoliathCount <= 5) {
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 6));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 4));
             }
             else {
                 goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
@@ -336,7 +345,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
         }
 
         // Research zealot upgrades if we have citadel
-        if (numCitadel > 0) {
+        if (numCitadel > 0 && numZealots >= 10) {
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Leg_Enhancements, 1));     // Leg enhancements can be good since we use zealots as ground troops
 
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Ground_Armor, 2)); // Other ground unit upgrades are also useful
@@ -398,7 +407,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     }
 
     // Get observers if we have a second base, or if the enemy has cloaked units.
-    if (numNexusCompleted >= 2 || InformationManager::Instance().enemyHasCloakTech())
+    if ((_openingGroup != "carriers") && (numNexusCompleted >= 2 || InformationManager::Instance().enemyHasCloakTech()))
     {
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Robotics_Facility, 1));
 
@@ -729,8 +738,10 @@ void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
     if (!ProductionManager::Instance().isOutOfBook() && !_openingStaticDefenseDropped)
     {
         // We're in the opening book and haven't dropped static defenses yet. Should we?
-        if (enemyPlan == OpeningPlan::Turtle ||
-            enemyPlan == OpeningPlan::SafeExpand)
+        /* CODE ADDED */
+        if (_openingGroup != "carriers" && // Carriers are too greedy and will get overwhelmed without static defense in place
+            (enemyPlan == OpeningPlan::Turtle ||
+            enemyPlan == OpeningPlan::SafeExpand))
             // enemyPlan == OpeningPlan::NakedExpand && _enemyRace != BWAPI::Races::Zerg) // could do this too
         {
             // 1. Remove upcoming defense buildings from the queue.
