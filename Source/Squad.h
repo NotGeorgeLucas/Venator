@@ -100,7 +100,7 @@ class Squad
     bool			unitNearEnemy(BWAPI::Unit unit);
     bool			needsToRegroup(UnitCluster & cluster);
     BWAPI::Position calcRegroupPosition(const UnitCluster & cluster) const;
-    BWAPI::Position finalRegroupPosition() const;
+    BWAPI::Position finalRegroupPosition(BWAPI::Unitset squad) const;
     BWAPI::Unit     nearbyImmobileGroundDefense(const BWAPI::Position & pos) const;
     BWAPI::Unit		nearbyImmobileDefense(const BWAPI::Position & pos) const;
     BWAPI::Unit		nearbyStaticDefense(const BWAPI::Position & pos) const;

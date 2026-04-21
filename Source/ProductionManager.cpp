@@ -42,6 +42,12 @@ void ProductionManager::setBuildOrder(const BuildOrder & buildOrder)
 
 void ProductionManager::update() 
 {
+    /* CODE ADDED */
+    // Carriers only want to go aggressive once we have a sizeable unit
+    if (_outOfBook && StrategyManager::Instance().getOpeningGroup() == "carriers" && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 4) {
+        CombatCommander::Instance().setAggression(true);
+    }
+
     // TODO make it more precise; it normally goes a little over
     // If we have reached a target amount of gas, take workers off gas.
     if (_targetGasAmount && the.self()->gatheredGas() >= _targetGasAmount)
@@ -231,13 +237,28 @@ void ProductionManager::manageBuildOrderQueue()
 
         // WORKAROUND for BOSS bug of making too many gateways: Limit the count.
         // Idea borrowed from Locutus by Bruce Nielsen.
-        if (currentItem.macroAct.isUnit() &&
-            currentItem.macroAct.getUnitType() == BWAPI::UnitTypes::Protoss_Gateway &&
-            the.my.all.count(BWAPI::UnitTypes::Protoss_Gateway) >= std::min(12, 4 * the.bases.baseCount(the.self())))
+        if (currentItem.macroAct.isUnit())
         {
-            _queue.doneWithHighestPriorityItem();
-            _lastProductionFrame = the.now();
-            continue;
+            BWAPI::UnitType t = currentItem.macroAct.getUnitType();
+
+            if (t == BWAPI::UnitTypes::Protoss_Gateway)
+            {
+                if (the.my.all.count(BWAPI::UnitTypes::Protoss_Gateway) >=
+                    std::min(12, 4 * the.bases.baseCount(the.self())))
+                {
+                    _queue.doneWithHighestPriorityItem();
+                    continue;
+                }
+            }
+            else if (t == BWAPI::UnitTypes::Protoss_Photon_Cannon)
+            {
+                if (the.my.all.count(BWAPI::UnitTypes::Protoss_Photon_Cannon) >=
+                    std::min(25, 5 * the.bases.baseCount(the.self())))
+                {
+                    _queue.doneWithHighestPriorityItem();
+                    continue;
+                }
+            }
         }
 
         // WORKAROUND for another instance of the same BOSS bug: Keep terran to 1 starport.
@@ -1340,7 +1361,13 @@ void ProductionManager::goOutOfBookAndClearQueue()
     _queue.clearAll();
     _outOfBook = true;
     _lastProductionFrame = the.now();       // don't immediately clear the "jam" again
-    CombatCommander::Instance().setAggression(true);
+
+
+    /* CODE ADDED */
+    // Carriers only want to go aggressive once we have a sizeable unit
+    if (StrategyManager::Instance().getOpeningGroup() != "carriers") {
+        CombatCommander::Instance().setAggression(true);
+    }
 }
 
 // If we're in book, leave it and clear the queue.

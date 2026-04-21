@@ -405,10 +405,21 @@ void MicroManager::regroup(const BWAPI::Position & regroupPosition, const UnitCl
         else
         {
             // We have retreated to a good position. Stay put.
+            if (unit->getType() == BWAPI::UnitTypes::Protoss_Carrier)
+            {
+                // Carriers can still attack while "regrouped"
+                BWAPI::Unit target = BWAPI::Broodwar->getClosestUnit(unit->getPosition(), BWAPI::Filter::IsEnemy && BWAPI::Filter::IsDetected, 10 * 32);
+
+                if (target)
+                {
+                    the.micro.AttackUnit(unit, target);
+                    continue;
+                }
+            }
+
             if (unit->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Tank_Mode || unit->getType() == BWAPI::UnitTypes::Zerg_Lurker)
             {
-                (void) UnitUtil::ImmobilizeUnit(unit);
-                // NOTE We don't want lurkers to hold position. Unlike other units, then they don't attack.
+                (void)UnitUtil::ImmobilizeUnit(unit);
             }
             else
             {
@@ -700,9 +711,7 @@ void MicroManager::drawOrderText()
     {
         for (BWAPI::Unit unit : _units)
         {
-            BWAPI::Broodwar->drawTextMap(unit->getPosition().x, unit->getPosition().y, "%s", (order->getStatus()
-                + "\n Tanks: " + std::to_string(enemyTankSquadSize)
-                + "\n Total: " + std::to_string(enemySquadSize)).c_str());
+            BWAPI::Broodwar->drawTextMap(unit->getPosition().x, unit->getPosition().y, "%s", order->getStatus());
         }
     }
 }

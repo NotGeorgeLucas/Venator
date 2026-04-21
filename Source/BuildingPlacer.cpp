@@ -590,7 +590,7 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(const Building & b)
     else if (b.type == BWAPI::UnitTypes::Protoss_Forge && b.macroLocation == MacroLocation::Front) {
         tile = findForgeLocation(b);
     }
-    else if (b.type == BWAPI::UnitTypes::Protoss_Photon_Cannon)
+    else if (b.type == BWAPI::UnitTypes::Protoss_Photon_Cannon && (b.macroLocation == MacroLocation::Front || b.macroLocation == MacroLocation::Natural))
     {
         tile = findCanonLocation(b);
     }
@@ -650,7 +650,9 @@ BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b)
             }
         }
     }
-
+    if (frontStart.isValid() && canBuildWithSpace(frontStart, b, 0)) {
+        return frontStart;
+    }
     return findGroupedLocation(b);
 }
 
@@ -685,7 +687,7 @@ BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) const
 
             double forgeDist = forgeTile.getDistance(t);
 
-            double score = getDistanceToClosestMineral(t) - forgeDist * 1.5f;
+            double score = getDistanceToClosestMineral(forgeTile) - forgeDist * 32 * 0.75f;
             if (score > bestScore)
             {
                 bestScore = score;
@@ -757,7 +759,7 @@ int BuildingPlacer::getDistanceToClosestMineral(const BWAPI::TilePosition& tile)
 
     for (BWAPI::Unit mineral : BWAPI::Broodwar->getMinerals())
     {
-        int dist = pos.getApproxDistance(mineral->getPosition() / 32);
+        int dist = pos.getApproxDistance(mineral->getPosition());
         if (dist < bestDist) bestDist = dist;
     }
 
@@ -767,25 +769,18 @@ int BuildingPlacer::getDistanceToClosestMineral(const BWAPI::TilePosition& tile)
 BWAPI::TilePosition BuildingPlacer::getNearestBuildingTile(const BWAPI::TilePosition& tile, const BWAPI::UnitType bType) const
 {
     BWAPI::TilePosition closestTile = BWAPI::TilePositions::None;
-    int bestDist = INT_MAX;
+    double bestDist = 9999999;
 
     for (BWAPI::Unit unit : the.self()->getUnits())
     {
         if (unit->getType() == bType)
         {
-            for (int dx = 0; dx < unit->getType().width(); dx++) {
-
-                for (int dy = 0; dy < unit->getType().height(); dy++) {
-                    BWAPI::TilePosition uSubtile = unit->getTilePosition() + BWAPI::TilePosition();
-
-                    int dist = uSubtile.getDistance(tile);
-                    if (dist < bestDist)
-                    {
-                        bestDist = dist;
-                        closestTile = uSubtile;
-                    }
-                }
+            double dist = unit->getTilePosition().getDistance(tile);
+            if (dist < bestDist) {
+                bestDist = dist;
+                closestTile = unit->getTilePosition();
             }
+            
         }
     }
 

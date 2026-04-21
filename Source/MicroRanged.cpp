@@ -94,6 +94,28 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
             continue;
         }
 
+
+        /* CODE ADDED */
+        auto lastTarget = rangedUnit->getLastCommand().getTarget();
+        
+        // Override logic for going straight for enemy base
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 5)
+        {
+
+            BWAPI::Unit target = getTarget(rangedUnit, rangedUnitTargets, underThreat);
+
+            if (target) {
+                if (!lastTarget || (lastTarget->getType() != target->getType() && (lastTarget->getPosition().getDistance(target->getPosition()) <= 3 * 32))) {
+                    the.micro.CatchAndAttackUnit(rangedUnit, target);
+                }
+            }
+            else {
+                BWAPI::Position enemyBasePos = the.bases.enemyStart()->getPosition();
+                the.micro.MoveNear(rangedUnit, enemyBasePos);
+            }
+            continue;
+        }
+
         if (order->isCombatOrder())
         {
             BWAPI::Unit target = getTarget(rangedUnit, rangedUnitTargets, underThreat);
@@ -105,13 +127,21 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
                 }
 
                 bool kite = rangedUnit->isFlying() ? enemyHasAntiAir : enemyHasAntiGround;
-                if (Config::Micro::KiteWithRangedUnits && kite)
+                // CODE ADDED: Carriers don't benefit from kiting
+                if (Config::Micro::KiteWithRangedUnits && kite && !(rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier))
                 {
                     the.micro.KiteTarget(rangedUnit, target);
                 }
                 else
                 {
-                    the.micro.CatchAndAttackUnit(rangedUnit, target);
+                    if (rangedUnit->getType() != BWAPI::UnitTypes::Protoss_Carrier) {
+                        the.micro.CatchAndAttackUnit(rangedUnit, target);
+
+                    }
+                    else if (!lastTarget || (lastTarget->getType() != target->getType() && (lastTarget->getPosition().getDistance(target->getPosition()) <= 3 * 32))) {
+                        the.micro.CatchAndAttackUnit(rangedUnit, target);
+                    }
+                    continue;
                 }
             }
             else
@@ -125,6 +155,49 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
         }
     }
 }
+
+
+
+
+/* CODE ADDED */
+// Function to know if carriers should back up to help main
+// Crude but should work
+bool MicroRanged::underBaseThreat() {
+
+    BWAPI::Position basePos = the.bases.myMain()->getPosition();
+
+    Base* natural = the.bases.myNatural();
+    if (natural && natural->getOwner() == the.self()) {
+        basePos = natural->getPosition();
+    }
+
+    std::vector<UnitInfo> enemyForce;
+    std::vector<UnitInfo> myForce;
+
+    InformationManager::Instance().getNearbyForce(enemyForce, basePos, the.enemy(), 800);
+    InformationManager::Instance().getNearbyForce(myForce, basePos, the.self(), 800);
+
+    int threat = 0;
+
+    for (auto& enemy : enemyForce)
+    {
+        threat += enemy.estimateHP();
+    }
+
+
+    int defense = 0;
+
+    for (auto& my : myForce)
+    {
+
+        defense += my.estimateHP();
+     
+    }
+
+    bool isBaseDanger = threat > defense * 0.8;
+}
+
+
 
 // This can return null if no target is worth attacking.
 // underThreat is true if any of the melee units is under immediate threat of attack.
@@ -140,9 +213,6 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
         {
             continue;
         }
-        if (target->getType() == BWAPI::UnitTypes::Zerg_Overlord && rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
-            continue; // For some reason they don't attack those anyway
-        }
 
         const int priority = getAttackPriority(rangedUnit, target);		// 0..12
         const int range = rangedUnit->getDistance(target);				// 0..map diameter in pixels
@@ -150,7 +220,8 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
             rangedUnit->getDistance(order->getPosition()) - target->getDistance(order->getPosition());
         
         // Skip targets that are too far away to worry about--outside tank range.
-        if (range >= 13 * 32)
+        // CODE ADDED: carriers like to pick off high priority units so it may be benefitial to search further
+        if (range >= (13 + (3 * (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier))) * 32)
         {
             continue;
         }
@@ -164,7 +235,19 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
 
         // Let's say that 1 priority step is worth 160 pixels (5 tiles).
         // We care about unit-target range and target-order position distance.
-        int score = 5 * 32 * priority - range;
+        int score;
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
+            if (range <= 8 * 32) {
+                score = 5 * 32 * priority;
+            }
+            else {
+                score = 5 * 32 * priority - (range - 8 * 32);
+
+            }
+        }
+        else {
+            score = 5 * 32 * priority - range;
+        }
 
         if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
             score += priority * 40;  // REALLY focus on the prioritized targets
@@ -379,22 +462,26 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
     if (rangedType == BWAPI::UnitTypes::Protoss_Carrier) {
         if (targetType == BWAPI::UnitTypes::Terran_Goliath 
          || targetType == BWAPI::UnitTypes::Terran_Missile_Turret
-         || (targetType.isWorker() && target->isConstructing() && (target->getBuildType() == BWAPI::UnitTypes::Terran_Missile_Turret))
+            || (targetType.isWorker() && (target->isConstructing() || target->isRepairing()) && (target->getBuildType() == BWAPI::UnitTypes::Terran_Missile_Turret))
             
          || targetType == BWAPI::UnitTypes::Zerg_Hydralisk) {
             return 12;      // Prioritize anything that shoots air
         }
         else if (targetType == BWAPI::UnitTypes::Terran_Armory
             || (isUsingArbiters && targetType == BWAPI::UnitTypes::Terran_Science_Vessel)
+            || targetType == BWAPI::UnitTypes::Terran_Medic
             || (targetType.isWorker() && target->isConstructing() && (target->getBuildType() == BWAPI::UnitTypes::Terran_Armory))
 
             || targetType == BWAPI::UnitTypes::Zerg_Mutalisk) {
             return 11;      // Destroy the means of goliath production if possible or the science vessels if we have reavers
         }
-        else if (targetType == BWAPI::UnitTypes::Terran_Vulture
-            || targetType == BWAPI::UnitTypes::Terran_Marine
-            
-            || targetType == BWAPI::UnitTypes::Zerg_Defiler) {
+        else if (targetType == BWAPI::UnitTypes::Terran_Marine
+             || (targetType.isWorker() && target->isRepairing() && target->getTarget() != nullptr
+                 && (target->getTarget()->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Siege_Mode
+                  || target->getTarget()->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Tank_Mode))
+
+            || targetType == BWAPI::UnitTypes::Zerg_Defiler)
+        {
             return 10;
         }
         else if (targetType.isWorker()) {

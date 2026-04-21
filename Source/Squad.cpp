@@ -210,7 +210,7 @@ void Squad::setClusterStatus(UnitCluster & cluster)
         {
             // Can't join another cluster. Move back to base.
             cluster.status = ClusterStatus::FallBack;
-            moveCluster(cluster, finalRegroupPosition(), false);
+            moveCluster(cluster, finalRegroupPosition(cluster.units), false);
             _regroupStatus = red + std::string("Fall back");
         }
     }
@@ -419,11 +419,17 @@ bool Squad::joinUp(const UnitCluster & cluster)
             getDistance(cluster.center) >= getDistance(otherCluster.center))
             // cluster.center.getApproxDistance(_order.getPosition()) >= otherCluster.center.getApproxDistance(_order.getPosition()))
         {
-            int dist = cluster.center.getApproxDistance(otherCluster.center);
-            if (dist < bestDistance)
-            {
-                bestDistance = dist;
-                bestCluster = &otherCluster;
+            /* CODE ADDED */
+            // This condition should help with air squads trying to group together with ground squads
+            if (!cluster.air
+            || (cluster.air && otherCluster.air)) {
+
+                int dist = cluster.center.getApproxDistance(otherCluster.center);
+                if (dist < bestDistance)
+                {
+                    bestDistance = dist;
+                    bestCluster = &otherCluster;
+                }
             }
         }
     }
@@ -887,7 +893,7 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
         return true;
     }
 
-    const BWAPI::Position lastStand = finalRegroupPosition();
+    const BWAPI::Position lastStand = finalRegroupPosition(cluster.units);
 
     // Is there static defense nearby that we should take into account?
     // The vanguard is known to be set thanks to the test immediately above.
@@ -976,7 +982,7 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     {
         if (u->getType() == BWAPI::UnitTypes::Protoss_Nexus && u->isPowered())
         {
-            if (cluster.center.getDistance(u->getPosition()) < 10 * 32)
+            if (cluster.center.getDistance(u->getPosition()) < 13 * 32)
             {
                 nearStaticDef = true;
                 break;
@@ -1126,19 +1132,49 @@ BWAPI::Position Squad::calcRegroupPosition(const UnitCluster & cluster) const
     }
 
     // 4. Retreat to a base we own.
-    return finalRegroupPosition();
+    return finalRegroupPosition(cluster.units);
 }
 
 // Return the rearmost position we should retreat to, which puts our "back to the wall".
 // It is our main base or natural. 
-BWAPI::Position Squad::finalRegroupPosition() const
+BWAPI::Position Squad::finalRegroupPosition(BWAPI::Unitset squad) const
 {
     // Retreat to the main base, unless we change our mind below.
     Base * base = the.bases.myMain();
+    
+
+    /* CODE ADDED */
+    // Carriers can't attack if they don't have interceptors so it doesn't make sense to retreat them to natural since they can't attack like other units
+    int unitCount = 0, carrierCount = 0, interceptorCount = 0;
+
+    for (BWAPI::Unit u : squad) {
+        if (!u->getType().isWorker() && !(u->getType() == BWAPI::UnitTypes::Protoss_Interceptor)) {
+            if (u->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
+                carrierCount++;
+                if (u->getInterceptorCount()) {
+                    interceptorCount += u->getInterceptorCount();
+                }
+            }
+            unitCount++;
+        }
+    }
+
+    bool isCarrierSquad = false;
+    bool isWeakCarrierSquad = false;
+
+    if (unitCount > 0) {
+        isCarrierSquad = (double)carrierCount / unitCount >= 0.5;
+    }
+
+    if (carrierCount > 0) {
+        isWeakCarrierSquad = (double)interceptorCount / carrierCount <= 2.0;
+    }
+
 
     // If the natural has been taken, retreat there instead.
     Base * natural = the.bases.myNatural();
-    if (natural && natural->getOwner() == the.self())
+    if (natural && natural->getOwner() == the.self()
+        && !(isCarrierSquad && isWeakCarrierSquad))
     {
         base = natural;
     }

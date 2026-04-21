@@ -152,6 +152,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     int numStargate = the.my.completed.count(BWAPI::UnitTypes::Protoss_Stargate);
     int numArbiter = the.my.all.count(BWAPI::UnitTypes::Protoss_Arbiter);
     int numHighTemplar = the.my.all.count(BWAPI::UnitTypes::Protoss_High_Templar);
+    int numShuttle = the.my.all.count(BWAPI::UnitTypes::Protoss_Shuttle);
 
     int numArbiterTrib = the.my.all.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal);
     int numArchives = the.my.all.count(BWAPI::UnitTypes::Protoss_Templar_Archives);
@@ -162,10 +163,20 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
 
     bool hasArbiterCondition = the.my.completed.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal) > 1;
 
-    int enemyGoliathCount= InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Terran_Goliath, the.enemy());
+    InformationManager im = InformationManager::Instance();
 
-    int enemyHydraCount= InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Hydralisk, the.enemy());
-    int enemyZerglingCount= InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Zergling, the.enemy());
+    int enemyGoliathCount = im.getNumUnits(BWAPI::UnitTypes::Terran_Goliath, the.enemy());
+    int enemyWraithCount = im.getNumUnits(BWAPI::UnitTypes::Terran_Wraith, the.enemy());
+    int enemyTankCount = im.getNumUnits(BWAPI::UnitTypes::Terran_Siege_Tank_Tank_Mode, the.enemy())
+                       + im.getNumUnits(BWAPI::UnitTypes::Terran_Siege_Tank_Siege_Mode, the.enemy());
+    bool enemyHasArmory = im.getNumUnits(BWAPI::UnitTypes::Terran_Armory, the.enemy()) > 0;
+
+    int enemyHydraCount = im.getNumUnits(BWAPI::UnitTypes::Zerg_Hydralisk, the.enemy());
+    int enemyZerglingCount = im.getNumUnits(BWAPI::UnitTypes::Zerg_Zergling, the.enemy());
+
+
+
+
 
 
     int maxProbes = WorkerManager::Instance().getMaxWorkers();
@@ -261,24 +272,33 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     /* CODE ADDED */
     else if (_openingGroup == "carriers")
     {
+        int maxCarriers = 17;
+
+        // Start expanding if we have enough carriers to make a solid defense
+        if (numCarriers >= 3) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusCompleted + 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
+        }
+
         if (numNexusAll < 2) {
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusAll + 1));
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Pylon, numPylons + 1));
         }
         if (hasCarrierCondition)
         {
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
-            if (!hasArbiterCondition || numCarriers <= 4) {
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 2));
+
+            if (hasArbiterCondition) {
+                // Leave room for one arbiter if we're that late
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, std::min(maxCarriers, numCarriers + std::max(3, 2 * numNexusCompleted)) - 1));
             }
             else {
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + numStargate -1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, std::min(maxCarriers, numCarriers + std::max(3, 2 * numNexusCompleted))));
             }
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + ceil(numNexusCompleted / 2)));
 
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Weapons, 2));
-
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Pylon, 1));
         }
         else {
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Fleet_Beacon, 1));
@@ -287,34 +307,28 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
         }
 
-        // Goliaths destroy carriers. We might want to try dropping something to blow them up
-        //if (numCarriers >= 2) {
-        //    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Shuttle, 1));
-        //    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, 1));
-        //    goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
-        //}
-
-
-        if (numCarriers >= 5) {
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, 1));
+        if (numCarriers >= 3) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, numGateways + 1));
         }
 
         if (the.enemyRace() == BWAPI::Races::Terran) {
-            // Produce ground infantry based on the knwon enemy goliath counts
-            if (enemyGoliathCount <= 5) {
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 4));
+
+            if (enemyGoliathCount + enemyWraithCount < 10) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + numGateways));
             }
             else {
+                
                 goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
 
-                if (enemyGoliathCount <= 15) {
-                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 2));
-                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 3));
-                }
-                else {
-                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 6));
-                }
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + std::max(1, numGateways - 4)));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 4));
+
             }
+            
+
+
+            
+            
         }
         else if (the.enemyRace() == BWAPI::Races::Zerg) {
             // Anti-zerg infantry
@@ -338,11 +352,6 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             }
         }
 
-        // Start expanding if we have enough carriers to make a solid defense
-        if (numCarriers >= 4) {
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusAll + 1));
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
-        }
 
         // Research zealot upgrades if we have citadel
         if (numCitadel > 0 && numZealots >= 10) {
@@ -353,8 +362,8 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
         }
 
         if (numNexusAll >= 3 || numCarriers >= 5) {
-            // try to go for arbiters lategame
 
+            // try to go for arbiters lategame
             if (hasArbiterCondition) {
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter, numArbiter + 1));
             }
@@ -366,7 +375,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             }
         }
 
-        goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Plasma_Shields, 1)); // Casual point into shields
+        goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Armor, 1)); // Casual point into air armor
     }
     else
     {
@@ -407,9 +416,10 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     }
 
     // Get observers if we have a second base, or if the enemy has cloaked units.
-    if ((_openingGroup != "carriers") && (numNexusCompleted >= 2 || InformationManager::Instance().enemyHasCloakTech()))
+    if (numNexusCompleted >= 2 || InformationManager::Instance().enemyHasCloakTech())
     {
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Robotics_Facility, 1));
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Observatory, 1));
 
         if (numObservers < 3 && self->completedUnitCount(BWAPI::UnitTypes::Protoss_Robotics_Facility) > 0)
         {
@@ -762,7 +772,7 @@ void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
             }
         }
     }
-
+    
     // All other considerations are handled separately by zerg.
     if (_selfRace == BWAPI::Races::Zerg)
     {

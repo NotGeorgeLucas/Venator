@@ -716,8 +716,8 @@ bool MacroAct::hasPotentialProducer() const
         if (unit->getType() == producerType &&
             unit->isPowered() &&     // replacing a pylon is a separate queue item
             !unit->isLifted() &&     // lifting/landing a building will be a separate queue item when implemented
-            !unit->isUpgrading() &&
             !unit->isResearching() &&
+            !unit->isUpgrading() &&
             (!producerType.isAddon() || unit->getAddon() == nullptr))
         {
             return true;

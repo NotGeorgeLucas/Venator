@@ -1769,7 +1769,8 @@ bool CombatCommander::unitIsGoodToDrop(const BWAPI::Unit unit) const
 {
     return
         unit->getType() == BWAPI::UnitTypes::Protoss_Dark_Templar ||
-        unit->getType() == BWAPI::UnitTypes::Terran_Vulture;
+        unit->getType() == BWAPI::UnitTypes::Terran_Vulture ||
+        /* CODE ADDED */ unit->getType() == BWAPI::UnitTypes::Protoss_Zealot;
 }
 
 // Called once per frame from update(), above.

@@ -920,7 +920,9 @@ void Micro::CatchAndAttackUnit(BWAPI::Unit attacker, BWAPI::Unit target)
         return;
     }
 
-    if (!target->isMoving() || !attacker->canMove() || attacker->isInWeaponRange(target))
+    /* CODE ADDED */
+    // Making carriers attack without chasing should make them more efficient
+    if (!target->isMoving() || !attacker->canMove() || attacker->isInWeaponRange(target) || attacker->getType() == BWAPI::UnitTypes::Protoss_Carrier)
     {
         //BWAPI::Broodwar->drawLineMap(attacker->getPosition(), target->getPosition(), BWAPI::Colors::Orange);
         AttackUnit(attacker, target);
@@ -966,9 +968,13 @@ void Micro::AttackUnit(BWAPI::Unit attacker, BWAPI::Unit target)
     // NOTE A lurker attacking a fixed target is ALWAYS on an attack frame.
     //      According to Arrak, sunken colonies behave the same.
     if (attacker->getLastCommandFrame() >= the.now() ||
-        (attacker->isAttackFrame() && attacker->getType() != BWAPI::UnitTypes::Zerg_Lurker))
+        ((attacker->isAttackFrame()) && attacker->getType() != BWAPI::UnitTypes::Zerg_Lurker))
     {
-        return;
+        /* CODE ADDED */
+        // Should hopefully make carriers behave better
+        if (attacker->getType() != BWAPI::UnitTypes::Protoss_Carrier) {
+            return;
+        }
     }
     
     // get the unit's current command
