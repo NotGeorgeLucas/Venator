@@ -336,15 +336,11 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 8));
             }
             else {
-                if (numArchives < 1) {
-                    goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
-                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 6));
-                }
+                goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 6));
+                
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, numCorsairs + 1));
 
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Citadel_of_Adun, 1));
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Templar_Archives, 1));
-                goal.push_back(MetaPair(BWAPI::TechTypes::Psionic_Storm, 1));
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, numHighTemplar + 2));
             }
 
             if (enemyZerglingCount >= 8 && numZealots < 4) {
@@ -419,7 +415,6 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     if (numNexusCompleted >= 2 || InformationManager::Instance().enemyHasCloakTech())
     {
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Robotics_Facility, 1));
-        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Observatory, 1));
 
         if (numObservers < 3 && self->completedUnitCount(BWAPI::UnitTypes::Protoss_Robotics_Facility) > 0)
         {
@@ -738,16 +733,26 @@ const MetaPairVector StrategyManager::getZergBuildOrderGoal() const
     return goal;
 }
 
+bool _counteredEnemyWraiths = false;
 void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
 {
     // This is the enemy plan that we have seen in action.
     OpeningPlan enemyPlan = OpponentModel::Instance().getEnemyPlan();
+
+    if (!_counteredEnemyWraiths) {
+        if (_openingGroup == "carriers" && InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Terran_Wraith, the.enemy()) > 0) {
+            queue.queueAsHighestPriority(MacroAct(BWAPI::UnitTypes::Protoss_Photon_Cannon, MacroLocation::Main));
+            queue.queueAsHighestPriority(MacroAct(BWAPI::UnitTypes::Protoss_Photon_Cannon, MacroLocation::Main));
+            _counteredEnemyWraiths = true;
+        }
+    }
 
     // For all races, if we've just discovered that the enemy is going with a heavy macro opening,
     // drop any static defense that our opening build order told us to make.
     if (!ProductionManager::Instance().isOutOfBook() && !_openingStaticDefenseDropped)
     {
         // We're in the opening book and haven't dropped static defenses yet. Should we?
+
         /* CODE ADDED */
         if (_openingGroup != "carriers" && // Carriers are too greedy and will get overwhelmed without static defense in place
             (enemyPlan == OpeningPlan::Turtle ||

@@ -5,6 +5,8 @@
 #include "The.h"
 #include "UnitUtil.h"
 
+#include <random>
+
 using namespace UAlbertaBot;
 
 // The unit's ranged ground weapon does splash damage, so it works under dark swarm.
@@ -20,7 +22,7 @@ bool MicroRanged::goodUnderDarkSwarm(BWAPI::UnitType type)
 // -----------------------------------------------------------------------------------------
 
 MicroRanged::MicroRanged()
-{ 
+{
 }
 
 void MicroRanged::executeMicro(const BWAPI::Unitset & targets, const UnitCluster & cluster)
@@ -33,6 +35,11 @@ void MicroRanged::executeMicro(const BWAPI::Unitset & targets, const UnitCluster
     assignTargets(units, targets);
 }
 
+
+static std::map<BWAPI::Unit, BWAPI::Unit> carrierToGoliathMap;
+
+static std::mt19937 gen(std::random_device{}());
+Base* _currentBaseTarget = nullptr;
 void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI::Unitset & targets)
 {
     // The set of potential targets.
@@ -97,23 +104,75 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
 
         /* CODE ADDED */
         auto lastTarget = rangedUnit->getLastCommand().getTarget();
-        
+
         // Override logic for going straight for enemy base
-        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 5)
-        {
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 5) {
+            if (_currentBaseTarget == nullptr) {
+                _currentBaseTarget = the.bases.enemyStart();
+            }
 
             BWAPI::Unit target = getTarget(rangedUnit, rangedUnitTargets, underThreat);
 
             if (target) {
-                if (!lastTarget || (lastTarget->getType() != target->getType() && (lastTarget->getPosition().getDistance(target->getPosition()) <= 3 * 32))) {
+                if (!lastTarget || (lastTarget->getType() != target->getType() && (lastTarget->getPosition().getDistance(target->getPosition()) <= 32))) {
                     the.micro.CatchAndAttackUnit(rangedUnit, target);
+                }
+
+                if (target->getType() == BWAPI::UnitTypes::Terran_Goliath)
+                {
+                    carrierToGoliathMap[rangedUnit] = target;
                 }
             }
             else {
-                BWAPI::Position enemyBasePos = the.bases.enemyStart()->getPosition();
-                the.micro.MoveNear(rangedUnit, enemyBasePos);
+                if (_currentBaseTarget) {
+
+                    BWAPI::Position enemyBasePos = _currentBaseTarget->getPosition();
+                    int dist = enemyBasePos.getApproxDistance(rangedUnit->getPosition());
+
+                    if (dist > 2 * 32) {
+                        the.micro.MoveNear(rangedUnit, enemyBasePos);
+                        continue;
+                    }
+                    else {
+                        // We are near enemy main, but no targets. Go hunt other bases.
+
+                        Base* strongestEnemyBase = nullptr;
+                        int bestBaseStrengthEstimate = 0;
+
+                        std::vector<Base*> candidates;
+                        
+                        for (Base* base : the.bases.getAll()) {
+                            if (base->getOwner() != the.self()) {
+                                candidates.push_back(base);
+                            
+                                std::vector<UnitInfo> enemyForce;
+                                InformationManager::Instance().getNearbyForce(enemyForce, base->getPosition(), the.enemy(), 1000);
+
+                                int str = 0;
+                                for (auto ui : enemyForce) {
+                                    str += ui.estimateHP();
+                                }
+
+                                if (str > bestBaseStrengthEstimate) {
+                                    strongestEnemyBase = base;
+                                    bestBaseStrengthEstimate = str;
+                                }
+                            }
+                        }
+
+                        if (bestBaseStrengthEstimate != 0) {
+                            _currentBaseTarget = strongestEnemyBase;
+                        }
+                        else if (!candidates.empty()){
+                            // If we didn't get a proper base, go at random to not get stuck in a loop
+
+                            int randomIndex = std::uniform_int_distribution<>(0, candidates.size() - 1)(gen);
+                            _currentBaseTarget = candidates[randomIndex];
+                        }
+
+                    }
+                }
             }
-            continue;
         }
 
         if (order->isCombatOrder())
@@ -195,6 +254,30 @@ bool MicroRanged::underBaseThreat() {
     }
 
     bool isBaseDanger = threat > defense * 0.8;
+
+    return isBaseDanger;
+}
+
+
+/* CODE ADDED */
+// A map to keep track of which goliath each carrier is targetting to split priority better
+void MicroRanged::cleanupCarrierTargets()
+{
+    for (auto it = carrierToGoliathMap.begin(); it != carrierToGoliathMap.end(); )
+    {
+        BWAPI::Unit carrier = it->first;
+        BWAPI::Unit goliath = it->second;
+
+        if (!carrier || !carrier->exists() ||
+            !goliath || !goliath->exists())
+        {
+            it = carrierToGoliathMap.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 
@@ -206,6 +289,8 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
     int bestScore = INT_MIN;
     BWAPI::Unit bestTarget = nullptr;
 
+    cleanupCarrierTargets();
+
     for (BWAPI::Unit target : targets)
     {
         // Skip targets under dark swarm that we can't hit.
@@ -214,7 +299,7 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
             continue;
         }
 
-        const int priority = getAttackPriority(rangedUnit, target);		// 0..12
+        int priority = getAttackPriority(rangedUnit, target);		    // 0..12
         const int range = rangedUnit->getDistance(target);				// 0..map diameter in pixels
         const int closerToGoal =										// positive if target is closer than us to the goal
             rangedUnit->getDistance(order->getPosition()) - target->getDistance(order->getPosition());
@@ -247,6 +332,27 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
         }
         else {
             score = 5 * 32 * priority - range;
+        }
+
+        /* CODE ADDED */
+        // Also we don't want to hyperfocus goliaths one at a time so 
+        // let's split the damage by lowering priority if that same goliath is already being targetted
+
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && target->getType() == BWAPI::UnitTypes::Terran_Goliath)
+        {
+            int numTargeting = 0;
+
+            for (const auto& kv : carrierToGoliathMap)
+            {
+                BWAPI::Unit g = kv.second;
+                if (g && g->exists() && g == target)
+                {
+                    numTargeting++;
+                }
+            }
+
+            // Scale penalty instead of flat -1 so it actually matters
+            score -= numTargeting * 150;
         }
 
         if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
@@ -486,6 +592,9 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
         }
         else if (targetType.isWorker()) {
             return 9;
+        }
+        else if (targetType.isResourceDepot()) {
+            return 8;
         }
     }
 

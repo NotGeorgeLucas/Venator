@@ -18,6 +18,8 @@ public:
     void executeMicro(const BWAPI::Unitset & targets, const UnitCluster & cluster);
     void assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI::Unitset & targets);
 
+    void cleanupCarrierTargets();
+
     //void calculateWaypoints();
     //void followPerimeter(BWAPI::Unit flyer, BWAPI::Position target);
     //int waypointIndex(int i);
