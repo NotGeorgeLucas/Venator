@@ -19,6 +19,7 @@ public:
     void assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI::Unitset & targets);
 
     void cleanupCarrierTargets();
+    BWAPI::Position computeCarrierVector(BWAPI::Unit carrier, const std::vector<std::pair<BWAPI::Unit, int>>& targets);
 
     //void calculateWaypoints();
     //void followPerimeter(BWAPI::Unit flyer, BWAPI::Position target);
@@ -27,7 +28,8 @@ public:
     //void cleanupPersistentState();
 
     bool underBaseThreat();
-
+    void doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target);
+    bool shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target);
 
     int getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target);
     BWAPI::Unit getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset & targets, bool underThreat);

@@ -1421,10 +1421,14 @@ void CombatCommander::updateBaseDefenseSquads()
         // Versus proxy buildings, we may need to pull a longer distance.
         const bool enemyProxy = buildingRush();
         const int workerDist = enemyProxy ? pullWorkerVsBuildingDistance : pullWorkerDistance;
+
+        bool workersInBaseRange = closestEnemyDistance < 4 * 32;
+        bool workerRush = nEnemyWorkers >= 2 && workersInBaseRange;
+
         const bool pullWorkers =
             Config::Micro::WorkersDefendRush &&
             closestEnemyDistance <= (wePulledWorkers ? workerDist + pullWorkerHysteresis : workerDist) &&
-            (enemyProxy || !sunkenDefender && numZerglingsInOurBase() > 2);
+            (enemyProxy || !sunkenDefender && numZerglingsInOurBase() > 2 || workerRush);
 
         if (wePulledWorkers && !pullWorkers)
         {
@@ -2140,6 +2144,35 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
             return;
         }
     }
+
+    // Pure AirToAir units should prefer to attack main if we don't have vision there
+    if (!canAttackGround && canAttackAir && !hasGround) {
+        Base* enemyMain = the.bases.enemyStart();
+        if (enemyMain) {
+            bool mainHatcheryVisible = false;
+            for (BWAPI::Unit unit : the.enemy()->getUnits()) {
+
+                if ((unit->getType() == BWAPI::UnitTypes::Zerg_Hatchery ||
+                    unit->getType() == BWAPI::UnitTypes::Zerg_Lair ||
+                    unit->getType() == BWAPI::UnitTypes::Zerg_Hive) &&
+                    unit->isVisible() &&
+                    unit->getDistance(enemyMain->getCenter()) < 20 * 32)
+                {
+                    mainHatcheryVisible = true;
+                    break;
+                }
+            }
+
+            if (!mainHatcheryVisible) {
+                returnBase = enemyMain;
+                returnKey = "hunt overlords";
+                return;
+            }
+        }
+        // Enemy main unknown: fall through to explore logic below.
+    }
+
+
 
     // 3. Attack known enemy buildings.
     // We assume that a terran can lift the buildings; otherwise, the squad must be able to attack ground.

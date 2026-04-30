@@ -177,7 +177,15 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
 
 
 
+    if (the.enemyRace() == BWAPI::Races::Zerg && numStargate >= 1) {
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, std::min(numCorsairs + 1, 2)));
+    }
 
+    if (numStargate >= 1 && _openingGroup != "carriers") {
+
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusCompleted + 1));
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
+    }
 
     int maxProbes = WorkerManager::Instance().getMaxWorkers();
 
@@ -189,11 +197,28 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     {
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 6));
 
+        /* CODE ADDED */
+        if (hasCarrierCondition) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 1));
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Weapons, 2));
+        }
+        else if (numStargate >= 1) {
+
+            if (numCorsairs >= 3) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Fleet_Beacon, 1));
+                goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 1));
+            }
+            else {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, numCorsairs + 2));
+            }
+        }
+
         if (numNexusAll >= 3)
         {
             // In the end, switch to carriers; not so many dragoons.
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 2));
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 1));
         }
         else if (numNexusAll >= 2)
@@ -337,9 +362,9 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             }
             else {
                 goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 6));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 3));
                 
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, numCorsairs + 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, numCorsairs + 2));
 
             }
 

@@ -103,8 +103,6 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
 
 
         /* CODE ADDED */
-        auto lastTarget = rangedUnit->getLastCommand().getTarget();
-
         // Override logic for going straight for enemy base
         if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 5) {
             if (_currentBaseTarget == nullptr) {
@@ -114,8 +112,11 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
             BWAPI::Unit target = getTarget(rangedUnit, rangedUnitTargets, underThreat);
 
             if (target) {
-                if (!lastTarget || (lastTarget->getType() != target->getType() && (lastTarget->getPosition().getDistance(target->getPosition()) <= 32))) {
-                    the.micro.CatchAndAttackUnit(rangedUnit, target);
+                if (shouldIssueNewOrder(rangedUnit, target)) {
+                    
+                    doCarrierAttack(rangedUnit, target);
+
+
                 }
 
                 if (target->getType() == BWAPI::UnitTypes::Terran_Goliath)
@@ -129,46 +130,24 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
                     BWAPI::Position enemyBasePos = _currentBaseTarget->getPosition();
                     int dist = enemyBasePos.getApproxDistance(rangedUnit->getPosition());
 
+                    BWAPI::Broodwar->drawCircle(BWAPI::CoordinateType::Map, enemyBasePos.x, enemyBasePos.y, 32 * 2, BWAPI::Colors::Purple);
+
+                    // If the order is significantly closer than the base, just go there
+                    int orderDist = order->getPosition().getDistance(rangedUnit->getPosition());
+                    if (orderDist * 4 < dist) {
+                        the.micro.MoveNear(rangedUnit, order->getPosition());
+                        continue;
+                    }
+
                     if (dist > 2 * 32) {
                         the.micro.MoveNear(rangedUnit, enemyBasePos);
                         continue;
                     }
                     else {
-                        // We are near enemy main, but no targets. Go hunt other bases.
+                        // We are near enemy main, but no targets. Fall back to global order
 
-                        Base* strongestEnemyBase = nullptr;
-                        int bestBaseStrengthEstimate = 0;
-
-                        std::vector<Base*> candidates;
-                        
-                        for (Base* base : the.bases.getAll()) {
-                            if (base->getOwner() != the.self()) {
-                                candidates.push_back(base);
-                            
-                                std::vector<UnitInfo> enemyForce;
-                                InformationManager::Instance().getNearbyForce(enemyForce, base->getPosition(), the.enemy(), 1000);
-
-                                int str = 0;
-                                for (auto ui : enemyForce) {
-                                    str += ui.estimateHP();
-                                }
-
-                                if (str > bestBaseStrengthEstimate) {
-                                    strongestEnemyBase = base;
-                                    bestBaseStrengthEstimate = str;
-                                }
-                            }
-                        }
-
-                        if (bestBaseStrengthEstimate != 0) {
-                            _currentBaseTarget = strongestEnemyBase;
-                        }
-                        else if (!candidates.empty()){
-                            // If we didn't get a proper base, go at random to not get stuck in a loop
-
-                            int randomIndex = std::uniform_int_distribution<>(0, candidates.size() - 1)(gen);
-                            _currentBaseTarget = candidates[randomIndex];
-                        }
+                        the.micro.MoveNear(rangedUnit, order->getPosition());
+                        continue;
 
                     }
                 }
@@ -186,18 +165,33 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
                 }
 
                 bool kite = rangedUnit->isFlying() ? enemyHasAntiAir : enemyHasAntiGround;
-                // CODE ADDED: Carriers don't benefit from kiting
-                if (Config::Micro::KiteWithRangedUnits && kite && !(rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier))
+                /* CODE ADDED */
+                // Reworked kiting and default attack for carriers
+                if (Config::Micro::KiteWithRangedUnits && kite)
                 {
-                    the.micro.KiteTarget(rangedUnit, target);
+                    if (rangedUnit->getType() != BWAPI::UnitTypes::Protoss_Carrier) {
+                        the.micro.KiteTarget(rangedUnit, target);
+                    }
+                    else {
+                        if (shouldIssueNewOrder(rangedUnit, target)) {
+                            
+
+                            BWAPI::Position fleeTo = RawDistanceAndDirection(rangedUnit->getPosition(), target->getPosition(), -48);;
+
+                            the.micro.CarrierAttackMove(rangedUnit, target, fleeTo);
+                        }
+                    }
+                    continue;
                 }
                 else
                 {
-                    if (rangedUnit->getType() != BWAPI::UnitTypes::Protoss_Carrier) {
-                        the.micro.CatchAndAttackUnit(rangedUnit, target);
-
+                    if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
+                        if (shouldIssueNewOrder(rangedUnit, target)) {
+                            
+                            doCarrierAttack(rangedUnit, target);
+                        }
                     }
-                    else if (!lastTarget || (lastTarget->getType() != target->getType() && (lastTarget->getPosition().getDistance(target->getPosition()) <= 3 * 32))) {
+                    else {
                         the.micro.CatchAndAttackUnit(rangedUnit, target);
                     }
                     continue;
@@ -240,7 +234,9 @@ bool MicroRanged::underBaseThreat() {
 
     for (auto& enemy : enemyForce)
     {
-        threat += enemy.estimateHP();
+        if (enemy.unit && enemy.unit->exists() && enemy.unit->canAttack()) {
+            threat += enemy.estimateHP();
+        }
     }
 
 
@@ -248,14 +244,88 @@ bool MicroRanged::underBaseThreat() {
 
     for (auto& my : myForce)
     {
-
-        defense += my.estimateHP();
+        if (my.unit && my.unit->exists() && my.unit->canAttack()) {
+            defense += my.estimateHP();
+        }
      
     }
 
     bool isBaseDanger = threat > defense * 0.8;
 
     return isBaseDanger;
+}
+
+
+/* CODE ADDED */
+// Vector maths to compute carrier targets
+BWAPI::Position MicroRanged::computeCarrierVector(BWAPI::Unit carrier, const std::vector<std::pair<BWAPI::Unit, int>>& targets) {
+    BWAPI::Position origin = carrier->getPosition();
+    double sumX = 0.0;
+    double sumY = 0.0;
+
+    for (const auto& [unit, priority] : targets)
+    {
+        if (!unit || !unit->exists()) continue;
+
+        BWAPI::Position diff = unit->getPosition() - origin;
+        double dist = std::max(32.0, double(origin.getDistance(unit->getPosition())));
+
+        // Normalize
+        double dx = diff.x / dist;
+        double dy = diff.y / dist;
+
+        // Distance falloff (closer = stronger)
+        double weight = priority * (1.0 / dist);
+
+        // Threat detection (very rough)
+        bool isThreat = false;
+
+        switch (unit->getType())
+        {
+            // Terran
+            case BWAPI::UnitTypes::Terran_Goliath:
+            case BWAPI::UnitTypes::Terran_Wraith:
+            case BWAPI::UnitTypes::Terran_Marine:
+            case BWAPI::UnitTypes::Terran_Missile_Turret:
+            case BWAPI::UnitTypes::Terran_Valkyrie:
+                isThreat = true;
+                break;
+
+            // Protoss
+            case BWAPI::UnitTypes::Protoss_Dragoon:
+            case BWAPI::UnitTypes::Protoss_Scout:
+            case BWAPI::UnitTypes::Protoss_Photon_Cannon:
+            case BWAPI::UnitTypes::Protoss_Corsair:
+            case BWAPI::UnitTypes::Protoss_Archon:
+                isThreat = true;
+                break;
+
+            // Zerg
+            case BWAPI::UnitTypes::Zerg_Hydralisk:
+            case BWAPI::UnitTypes::Zerg_Mutalisk:
+            case BWAPI::UnitTypes::Zerg_Scourge:
+            case BWAPI::UnitTypes::Zerg_Devourer:
+            case BWAPI::UnitTypes::Zerg_Spore_Colony:
+                isThreat = true;
+                break;
+
+            default:
+                isThreat = false;
+                break;
+        }
+
+        if (isThreat)
+        {
+            // Repel instead of attract
+            weight *= -0.5;
+        }
+
+        sumX += dx * weight;
+        sumY += dy * weight;
+    }
+
+    BWAPI::Position result(int(sumX * 32 * 6), int(sumY * 32 * 6)); // scale to tiles
+    return origin + result;
 }
 
 
@@ -280,6 +350,40 @@ void MicroRanged::cleanupCarrierTargets()
     }
 }
 
+
+/* CODE ADDED */
+// Compute carrier vector and do attack-move to that vector
+void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target) {
+    std::vector<std::pair<BWAPI::Unit, int>> nearbyTargets;
+
+    std::vector<UnitInfo> enemyForce;
+    InformationManager::Instance().getNearbyForce(enemyForce, carrier->getPosition(), the.enemy(), 20 * 32);
+
+    for (auto ui : enemyForce) {
+        if (!ui.unit || !ui.unit->exists()) continue;
+
+        int priority = getAttackPriority(carrier, ui.unit);
+
+        if (priority > 0) {
+            nearbyTargets.emplace_back(ui.unit, priority);
+        }
+    }
+
+    BWAPI::Position moveTo = computeCarrierVector(carrier, nearbyTargets);
+    the.micro.CarrierAttackMove(carrier, target, moveTo);
+}
+
+/* CODE ADDED */
+// For carriers: Should we change targets?
+bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target)
+{
+    auto lastTarget = unit->getLastCommand().getTarget();
+
+    return !lastTarget ||
+        !lastTarget->exists() ||
+        (lastTarget->getType() != target->getType() &&
+            lastTarget->getPosition().getDistance(target->getPosition()) <= 2 * 32);
+}
 
 
 // This can return null if no target is worth attacking.
@@ -566,18 +670,27 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
     /* CODE ADDED */
     bool isUsingArbiters = the.my.completed.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal) > 0;
     if (rangedType == BWAPI::UnitTypes::Protoss_Carrier) {
-        if (targetType == BWAPI::UnitTypes::Terran_Goliath 
+        if (
+            // Terran:
+            targetType == BWAPI::UnitTypes::Terran_Goliath 
          || targetType == BWAPI::UnitTypes::Terran_Missile_Turret
-            || (targetType.isWorker() && (target->isConstructing() || target->isRepairing()) && (target->getBuildType() == BWAPI::UnitTypes::Terran_Missile_Turret))
-            
+         || (targetType.isWorker() && (target->isConstructing() || target->isRepairing()) && (target->getBuildType() == BWAPI::UnitTypes::Terran_Missile_Turret))
+            // Protoss:
+         || targetType == BWAPI::UnitTypes::Protoss_Dark_Archon
+            // Zerg:
          || targetType == BWAPI::UnitTypes::Zerg_Hydralisk) {
             return 12;      // Prioritize anything that shoots air
         }
-        else if (targetType == BWAPI::UnitTypes::Terran_Armory
+        else if (
+            // Terran:
+            targetType == BWAPI::UnitTypes::Terran_Armory
             || (isUsingArbiters && targetType == BWAPI::UnitTypes::Terran_Science_Vessel)
             || targetType == BWAPI::UnitTypes::Terran_Medic
+            || targetType == BWAPI::UnitTypes::Terran_Wraith
             || (targetType.isWorker() && target->isConstructing() && (target->getBuildType() == BWAPI::UnitTypes::Terran_Armory))
-
+            // Protoss:
+            || targetType == BWAPI::UnitTypes::Protoss_Dragoon
+            // Zerg:
             || targetType == BWAPI::UnitTypes::Zerg_Mutalisk) {
             return 11;      // Destroy the means of goliath production if possible or the science vessels if we have reavers
         }

@@ -955,6 +955,28 @@ void Micro::CatchAndAttackUnit(BWAPI::Unit attacker, BWAPI::Unit target)
     }
 }
 
+
+/* CODE ADDED */
+// Special command for carriers to keep attacking while moving, without breaking them as 
+void Micro::CarrierAttackMove(BWAPI::Unit carrier, BWAPI::Unit target, BWAPI::Position movePos)
+{
+    if (!carrier || !carrier->exists() || !target || !target->exists())
+        return;
+
+    int frame = the.now();
+
+    // Every few frames, re-issue attack to keep targeting
+    if (frame % 12 == 0)
+    {
+        carrier->attack(target);
+    }
+    else
+    {
+        carrier->move(movePos);
+    }
+}
+
+
 void Micro::AttackUnit(BWAPI::Unit attacker, BWAPI::Unit target)
 {
     if (!attacker || !attacker->exists() || attacker->getPlayer() != the.self() ||

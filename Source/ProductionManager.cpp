@@ -253,7 +253,15 @@ void ProductionManager::manageBuildOrderQueue()
             else if (t == BWAPI::UnitTypes::Protoss_Photon_Cannon)
             {
                 if (the.my.all.count(BWAPI::UnitTypes::Protoss_Photon_Cannon) >=
-                    std::min(25, 5 * the.bases.baseCount(the.self())))
+                    std::min(15, 4 * the.bases.baseCount(the.self())))
+                {
+                    _queue.doneWithHighestPriorityItem();
+                    continue;
+                }
+            }
+            else if (t == BWAPI::UnitTypes::Protoss_Cybernetics_Core)
+            {
+                if (the.my.all.count(BWAPI::UnitTypes::Protoss_Cybernetics_Core) >= 2)
                 {
                     _queue.doneWithHighestPriorityItem();
                     continue;

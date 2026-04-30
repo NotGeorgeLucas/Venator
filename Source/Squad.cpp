@@ -934,7 +934,29 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     }
 
     /* CODE ADDED */
-    
+
+    // AirToAir logic
+    if (cluster.air && cluster.groundDPF == 0 && cluster.airDPF >= 0) {
+        bool hasAirThreat = false;
+
+        for (const auto& kv : InformationManager::Instance().getUnitData(BWAPI::Broodwar->enemy()).getUnits()) {
+            const UnitInfo& ui = kv.second;
+
+            if (!ui.lastPosition.isValid()) continue;
+
+            if (cluster.center.getDistance(ui.lastPosition) < _combatSimRadius) {
+                if (ui.type.airWeapon() != BWAPI::WeaponTypes::None) {
+                    hasAirThreat = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasAirThreat) {
+            _regroupStatus = green + std::string("Free airspace");
+            return false; // never regroup
+        }
+    }
 
     int zealotCount = 0;
     int total = 0;
