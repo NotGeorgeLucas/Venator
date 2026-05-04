@@ -248,9 +248,9 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     bool moved = false;
 
                     BWAPI::Position bestMove;
-                    int bestScore = INT_MIN;
+                    double bestScore = INT_MIN;
 
-                    for (double displace = 16; displace <= midpointDist; displace += 16) {
+                    for (float displace = 16; displace <= midpointDist; displace += 16) {
                         BWAPI::Position midpointA = midpoint + perpendicularOffset(dir, displace);
                         BWAPI::Position midpointB = midpoint + perpendicularOffset(dir, -displace);
 
@@ -265,7 +265,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                             }
 
                             // simple preference: closer to target = better
-                            int score = -start.getDistance(p);
+                            double score = -start.getDistance(p);
 
                             if (score > bestScore) {
                                 bestScore = score;
@@ -337,7 +337,13 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
 
         // Let's say that 1 priority step is worth 160 pixels (5 tiles).
         // We care about unit-target range and target-order position distance.
-        int score = 5 * 32 * priority - range;
+        int score = 0;
+        if (target->getType() == BWAPI::UnitTypes::Zerg_Overlord) {
+            score = 5 * 32 * priority - (int)((double)range / 2.0);
+        }
+        else {
+            score = 5 * 32 * priority - range;
+        }
 
         // Adjust for special features.
         // A bonus for attacking enemies that are "in front".
@@ -373,19 +379,38 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
         if (target->getHitPoints() < target->getType().maxHitPoints())
         {
             /* CODE ADDED */
-            // Significant bonuses for even lower health enemies
-            if (target->getHitPoints() < ((double)target->getType().maxHitPoints()) * 0.65f) {
-                score += 48;
-            }
+            // Significant bonuses scaling with lower health
+            double hp = target->getHitPoints();
+            double maxHp = target->getType().maxHitPoints();
+
+            double missingRatio = 1.0 - (hp / maxHp); // 0 = full HP, 1 = dead
+
+            // Base bonus
             score += 24;
+
+            // Scaling bonus
+            score += static_cast<int>(missingRatio * 80);
         }
 
 
         /* CODE ADDED */
         // Used to be a to-do, A2A units should prioritize clumps
-        int nearbyEnemies = BWAPI::Broodwar->getUnitsInRadius(target->getPosition(), 32,
-            BWAPI::Filter::IsEnemy && BWAPI::Filter::IsFlyer).size();
-        score += nearbyEnemies * 20;
+        BWAPI::Unitset nearbyEnemies = BWAPI::Broodwar->getUnitsInRadius(target->getPosition(), 32,
+            BWAPI::Filter::IsEnemy && BWAPI::Filter::IsFlyer);
+        for (auto & enemy : nearbyEnemies) {
+            if (enemy->getID() != target->getID()) {
+                int dist = enemy->getDistance(target);
+
+                if (dist <= 50) {
+                    score += 30;
+                    continue;
+                }
+                if (dist <= 100) {
+                    score += 15;
+                    continue;
+                }
+            }
+        }
 
         if (score > bestScore)
         {
@@ -402,8 +427,7 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
     std::vector<BWAPI::Position> patrolPoints;
 
 
-    auto hasSporeNearby = [&](const BWAPI::Position& pos) -> bool
-        {
+    auto hasSporeNearby = [&](const BWAPI::Position& pos) -> bool {
             if (!pos.isValid()) return true; // treat invalid as unsafe
 
             for (auto& u : BWAPI::Broodwar->enemy()->getUnits())

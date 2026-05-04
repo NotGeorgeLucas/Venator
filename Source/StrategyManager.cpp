@@ -174,6 +174,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     int enemyHydraCount = im.getNumUnits(BWAPI::UnitTypes::Zerg_Hydralisk, the.enemy());
     int enemyZerglingCount = im.getNumUnits(BWAPI::UnitTypes::Zerg_Zergling, the.enemy());
 
+    int enemyDragoonCount = im.getNumUnits(BWAPI::UnitTypes::Protoss_Dragoon, the.enemy());
 
 
 
@@ -310,8 +311,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Pylon, numPylons + 1));
         }
-        if (hasCarrierCondition)
-        {
+        if (hasCarrierCondition) {
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
 
             if (hasArbiterCondition) {
@@ -319,9 +319,14 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, std::min(maxCarriers, numCarriers + std::max(3, 2 * numNexusCompleted)) - 1));
             }
             else {
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, std::min(maxCarriers, numCarriers + std::max(3, 2 * numNexusCompleted))));
+                int carrierTarget = std::min(maxCarriers, numCarriers + std::max(2, numNexusCompleted));
+
+                if (the.enemyRace() == BWAPI::Races::Protoss) {
+                    carrierTarget = std::min(carrierTarget, 8); // don't overcommit early
+                }
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, carrierTarget));
             }
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + ceil(numNexusCompleted / 2)));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + (int)ceil(numNexusCompleted / 2.0)));
 
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Weapons, 2));
         }
@@ -332,8 +337,14 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
         }
 
+
         if (numCarriers >= 3) {
-            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, numGateways + 1));
+            if (the.enemyRace() == BWAPI::Races::Protoss) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, numGateways + 3));
+            }
+            else {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Gateway, numGateways + 1));
+            }
         }
 
         if (the.enemyRace() == BWAPI::Races::Terran) {
@@ -372,17 +383,34 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 6));
             }
         }
+        else if (the.enemyRace() == BWAPI::Races::Protoss) {
+
+            // Always get range, because dragoons without range is comedy
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
+
+            // Stronger ground buffer
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + std::max(6, numGateways * 2)));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + std::max(4, numGateways)));
+
+            // Scale harder if they mass dragoons
+            if (enemyDragoonCount >= 6) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 10));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 6));
+            }
+        }
 
 
         // Research zealot upgrades if we have citadel
-        if (numCitadel > 0 && numZealots >= 10) {
+        if ((numCitadel > 0 && numZealots >= 10)
+            || (numCitadel > 0 && the.enemyRace() == BWAPI::Races::Protoss)) {
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Leg_Enhancements, 1));     // Leg enhancements can be good since we use zealots as ground troops
 
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Ground_Armor, 2)); // Other ground unit upgrades are also useful
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Ground_Weapons, 1));
         }
 
-        if (numNexusAll >= 3 || numCarriers >= 5) {
+        if ((numNexusAll >= 3 || numCarriers >= 5)
+            || (the.enemyRace() == BWAPI::Races::Protoss && numNexusAll >= 2)) {
 
             // try to go for arbiters lategame
             if (hasArbiterCondition) {
@@ -759,6 +787,7 @@ const MetaPairVector StrategyManager::getZergBuildOrderGoal() const
 }
 
 bool _counteredEnemyWraiths = false;
+bool _seenProtossOp = false;
 void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
 {
     // This is the enemy plan that we have seen in action.
@@ -769,6 +798,22 @@ void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
             queue.queueAsHighestPriority(MacroAct(BWAPI::UnitTypes::Protoss_Photon_Cannon, MacroLocation::Main));
             queue.queueAsHighestPriority(MacroAct(BWAPI::UnitTypes::Protoss_Photon_Cannon, MacroLocation::Main));
             _counteredEnemyWraiths = true;
+        }
+    }
+
+    if (!_seenProtossOp) {
+        if (_openingGroup == "carriers" && the.enemyRace() == BWAPI::Races::Protoss) {
+            int numZealots = InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Protoss_Zealot, the.enemy());
+            int numDragoons = InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Protoss_Dragoon, the.enemy());
+
+            if (numZealots + numDragoons >= 3) {
+                _seenProtossOp = true;
+
+                if (numZealots > numDragoons) {
+                    queue.queueAsHighestPriority(MacroAct(BWAPI::UnitTypes::Protoss_Photon_Cannon, MacroLocation::Natural));
+                    queue.queueAsHighestPriority(MacroAct(BWAPI::UnitTypes::Protoss_Photon_Cannon, MacroLocation::Natural));
+                }
+            }
         }
     }
 

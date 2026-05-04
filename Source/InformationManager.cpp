@@ -1286,7 +1286,7 @@ BWAPI::Unit InformationManager::nearestGroundStaticDefense(BWAPI::Position pos) 
     for (BWAPI::Unit building : _staticDefense)
     {
         if (building->getType() == BWAPI::UnitTypes::Terran_Bunker && !building->getLoadedUnits().empty() ||
-            building->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon ||
+            (building->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon && building->isPowered()) ||
             building->getType() == BWAPI::UnitTypes::Zerg_Sunken_Colony)
         {
             int dist = building->getDistance(pos);
@@ -1312,7 +1312,7 @@ BWAPI::Unit InformationManager::nearestAirStaticDefense(BWAPI::Position pos) con
     {
         if (building->getType() == BWAPI::UnitTypes::Terran_Missile_Turret ||
             building->getType() == BWAPI::UnitTypes::Terran_Bunker && !building->getLoadedUnits().empty() ||
-            building->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon || 
+            (building->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon && building->isPowered()) ||
             building->getType() == BWAPI::UnitTypes::Zerg_Spore_Colony)
         {
             int dist = building->getDistance(pos);

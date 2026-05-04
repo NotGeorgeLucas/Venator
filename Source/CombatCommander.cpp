@@ -2145,25 +2145,32 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
         }
     }
 
-    // Pure AirToAir units should prefer to attack main if we don't have vision there
+    // Pure AirToAir units should prefer to attack main if we don't have vision there and there isn't a spore there
     if (!canAttackGround && canAttackAir && !hasGround) {
         Base* enemyMain = the.bases.enemyStart();
         if (enemyMain) {
             bool mainHatcheryVisible = false;
-            for (BWAPI::Unit unit : the.enemy()->getUnits()) {
-
-                if ((unit->getType() == BWAPI::UnitTypes::Zerg_Hatchery ||
-                    unit->getType() == BWAPI::UnitTypes::Zerg_Lair ||
-                    unit->getType() == BWAPI::UnitTypes::Zerg_Hive) &&
-                    unit->isVisible() &&
-                    unit->getDistance(enemyMain->getCenter()) < 20 * 32)
-                {
-                    mainHatcheryVisible = true;
-                    break;
+            bool isDefended = false;
+            std::vector<UnitInfo> enemyForce;
+            InformationManager::Instance().getNearbyForce(enemyForce, enemyMain->getCenter(), the.enemy(), 20 * 32);
+            for (UnitInfo & ui : enemyForce) {
+                auto u = ui.unit;
+                if (u && u->exists()) {
+                    if ((u->getType() == BWAPI::UnitTypes::Zerg_Hatchery ||
+                        u->getType() == BWAPI::UnitTypes::Zerg_Lair ||
+                        u->getType() == BWAPI::UnitTypes::Zerg_Hive) &&
+                        u->isVisible() &&
+                        u->getDistance(enemyMain->getCenter()) < 20 * 32)
+                    {
+                        mainHatcheryVisible = true;
+                    }
+                    if (u->getType() == BWAPI::UnitTypes::Zerg_Spore_Colony && u->getDistance(enemyMain->getCenter()) < 10 * 32) {
+                        isDefended = true;
+                    }
                 }
             }
 
-            if (!mainHatcheryVisible) {
+            if (!mainHatcheryVisible && !isDefended) {
                 returnBase = enemyMain;
                 returnKey = "hunt overlords";
                 return;

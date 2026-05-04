@@ -52,6 +52,10 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
             !infestable(u);
     });
 
+    CarrierThreatInfo cInfo;
+    cInfo.maxThreatElevation = INT_MIN;
+    cInfo.shouldGoHighground = false;
+
     // Figure out if the enemy is ready to attack ground or air.
     bool enemyHasAntiGround = false;
     bool enemyHasAntiAir = false;
@@ -69,7 +73,24 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
                 enemyHasAntiAir = true;
             }
         }
+
+        if (target->getType() == BWAPI::UnitTypes::Protoss_Dragoon) {
+            cInfo.threats.insert(target);
+            BWAPI::TilePosition tp(target->getPosition());
+
+            int elevation = BWAPI::Broodwar->getGroundHeight(tp);
+            if (elevation > cInfo.maxThreatElevation) {
+                cInfo.maxThreatElevation = elevation;
+            }
+        }
     }
+
+    int carrierNum = 0;
+    for (BWAPI::Unit u : rangedUnits) {
+        carrierNum += (u->getType() == BWAPI::UnitTypes::Protoss_Carrier);
+    }
+
+    cInfo.shouldGoHighground = ((int)((float)carrierNum * 1.5) <= cInfo.threats.size());
     
     // Are any enemies in range to shoot at the ranged units?
     bool underThreat = order->isCombatOrder() && anyUnderThreat(rangedUnits);
@@ -114,7 +135,7 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
             if (target) {
                 if (shouldIssueNewOrder(rangedUnit, target)) {
                     
-                    doCarrierAttack(rangedUnit, target);
+                    doCarrierAttack(rangedUnit, target, cInfo);
 
 
                 }
@@ -132,9 +153,9 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
 
                     BWAPI::Broodwar->drawCircle(BWAPI::CoordinateType::Map, enemyBasePos.x, enemyBasePos.y, 32 * 2, BWAPI::Colors::Purple);
 
-                    // If the order is significantly closer than the base, just go there
+                    // If the order is closer than the base, just go there
                     int orderDist = order->getPosition().getDistance(rangedUnit->getPosition());
-                    if (orderDist * 4 < dist) {
+                    if (orderDist < dist) {
                         the.micro.MoveNear(rangedUnit, order->getPosition());
                         continue;
                     }
@@ -188,7 +209,7 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
                     if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
                         if (shouldIssueNewOrder(rangedUnit, target)) {
                             
-                            doCarrierAttack(rangedUnit, target);
+                            doCarrierAttack(rangedUnit, target, cInfo);
                         }
                     }
                     else {
@@ -353,31 +374,102 @@ void MicroRanged::cleanupCarrierTargets()
 
 /* CODE ADDED */
 // Compute carrier vector and do attack-move to that vector
-void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target) {
-    std::vector<std::pair<BWAPI::Unit, int>> nearbyTargets;
+void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, CarrierThreatInfo cInfo) {
 
-    std::vector<UnitInfo> enemyForce;
-    InformationManager::Instance().getNearbyForce(enemyForce, carrier->getPosition(), the.enemy(), 20 * 32);
+    BWAPI::Position moveTo;
 
-    for (auto ui : enemyForce) {
-        if (!ui.unit || !ui.unit->exists()) continue;
 
-        int priority = getAttackPriority(carrier, ui.unit);
+    bool foundTile = false;
 
-        if (priority > 0) {
-            nearbyTargets.emplace_back(ui.unit, priority);
+    if (cInfo.shouldGoHighground) {
+
+        BWAPI::TilePosition cOrigin(carrier->getPosition());
+
+        BWAPI::Position threatDir = averageNormalizedVector(cInfo.threats, BWAPI::Position(cOrigin));
+
+        BWAPI::TilePosition bestTile = BWAPI::TilePositions::Invalid;
+
+        int bestScore = INT_MIN;
+
+
+        for (int dx = -5; dx < 6; dx++) {
+            for (int dy = -5; dy < 6; dy++) {
+                BWAPI::TilePosition checkedTile = cOrigin + BWAPI::TilePosition(dx, dy);
+
+                if (BWAPI::Broodwar->getGroundHeight(checkedTile) > cInfo.maxThreatElevation && angleDifferenceGreaterThan(threatDir, BWAPI::Position(checkedTile - cOrigin), 60.0)) {
+                    BWAPI::Unitset unitsFromPos = BWAPI::Broodwar->getUnitsInRadius(BWAPI::Position(checkedTile), 8 * 32);
+
+                    BWAPI::Unitset threatsFromPos;
+
+                    for (auto u : unitsFromPos) {
+                        if (!u || !u->exists() || !u->isVisible()) continue;
+                        if (u->getPlayer() != BWAPI::Broodwar->enemy()) continue;
+
+                        auto type = u->getType();
+                        if (type == BWAPI::UnitTypes::Protoss_Dragoon) {
+                            threatsFromPos.insert(u);
+                        }
+
+                    }
+
+                    int score = 0;
+
+                    // Highly prefer higher ground
+                    score += 50 * BWAPI::Broodwar->getGroundHeight(checkedTile);
+
+                    // The more enemies the better, but we can't sacrifice position for that
+                    if (threatsFromPos .size() > 3) {
+                        score -= 10 * threatsFromPos.size();
+                    }
+                    else {
+                        score += 100;
+                    }
+
+                    // Tie-breaker: distance
+                    score -= carrier->getPosition().getApproxDistance(BWAPI::Position(checkedTile));
+
+                    if (score > bestScore) {
+                        bestTile = checkedTile;
+                        bestScore = score;
+                        foundTile = true;
+                    }
+                }
+            }
         }
+        moveTo = BWAPI::Position(bestTile);
+    }
+    if (!cInfo.shouldGoHighground || !foundTile) {
+
+        std::vector<UnitInfo> enemyForce;
+
+        std::vector<std::pair<BWAPI::Unit, int>> nearbyTargets;
+        InformationManager::Instance().getNearbyForce(enemyForce, carrier->getPosition(), the.enemy(), 20 * 32);
+
+        for (auto ui : enemyForce) {
+            if (!ui.unit || !ui.unit->exists()) continue;
+
+            int priority = getAttackPriority(carrier, ui.unit);
+
+            if (priority > 0) {
+                nearbyTargets.emplace_back(ui.unit, priority);
+            }
+        }
+
+        moveTo = computeCarrierVector(carrier, nearbyTargets);
     }
 
-    BWAPI::Position moveTo = computeCarrierVector(carrier, nearbyTargets);
     the.micro.CarrierAttackMove(carrier, target, moveTo);
 }
 
 /* CODE ADDED */
 // For carriers: Should we change targets?
-bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target)
-{
-    auto lastTarget = unit->getLastCommand().getTarget();
+bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target) {
+
+    BWAPI::Unit lastTarget;
+
+    if (target && target->exists()) {
+        lastTarget = unit->getLastCommand().getTarget();
+    }
 
     return !lastTarget ||
         !lastTarget->exists() ||
@@ -455,8 +547,7 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
                 }
             }
 
-            // Scale penalty instead of flat -1 so it actually matters
-            score -= numTargeting * 150;
+            score -= numTargeting * 40;
         }
 
         if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
@@ -674,30 +765,39 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
             // Terran:
             targetType == BWAPI::UnitTypes::Terran_Goliath 
          || targetType == BWAPI::UnitTypes::Terran_Missile_Turret
+         || targetType == BWAPI::UnitTypes::Terran_Ghost
          || (targetType.isWorker() && (target->isConstructing() || target->isRepairing()) && (target->getBuildType() == BWAPI::UnitTypes::Terran_Missile_Turret))
             // Protoss:
          || targetType == BWAPI::UnitTypes::Protoss_Dark_Archon
+         || targetType == BWAPI::UnitTypes::Protoss_Photon_Cannon
             // Zerg:
-         || targetType == BWAPI::UnitTypes::Zerg_Hydralisk) {
-            return 12;      // Prioritize anything that shoots air
+         || targetType == BWAPI::UnitTypes::Zerg_Hydralisk
+         || targetType == BWAPI::UnitTypes::Zerg_Spore_Colony) {
+            return 12;      // Prioritize anything that shoots air or impactful small targets
         }
         else if (
             // Terran:
             targetType == BWAPI::UnitTypes::Terran_Armory
-            || (isUsingArbiters && targetType == BWAPI::UnitTypes::Terran_Science_Vessel)
             || targetType == BWAPI::UnitTypes::Terran_Medic
             || targetType == BWAPI::UnitTypes::Terran_Wraith
             || (targetType.isWorker() && target->isConstructing() && (target->getBuildType() == BWAPI::UnitTypes::Terran_Armory))
             // Protoss:
             || targetType == BWAPI::UnitTypes::Protoss_Dragoon
+            || targetType == BWAPI::UnitTypes::Protoss_High_Templar
             // Zerg:
-            || targetType == BWAPI::UnitTypes::Zerg_Mutalisk) {
-            return 11;      // Destroy the means of goliath production if possible or the science vessels if we have reavers
+            || targetType == BWAPI::UnitTypes::Zerg_Mutalisk
+            // All:
+            || (isUsingArbiters && targetType.isDetector())
+            ) {
+            return 11;      // Destroy important supporting units and means of producing goliaths
         }
         else if (targetType == BWAPI::UnitTypes::Terran_Marine
+            // SCVs repairing tanks:
              || (targetType.isWorker() && target->isRepairing() && target->getTarget() != nullptr
                  && (target->getTarget()->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Siege_Mode
                   || target->getTarget()->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Tank_Mode))
+
+            || targetType == BWAPI::UnitTypes::Protoss_Dark_Templar
 
             || targetType == BWAPI::UnitTypes::Zerg_Defiler)
         {

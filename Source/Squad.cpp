@@ -577,7 +577,13 @@ bool Squad::unreadyUnit(BWAPI::Unit u)
     {
         if (u->canTrain(BWAPI::UnitTypes::Protoss_Interceptor) && !u->isTraining())
         {
-            return the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
+            /* CODE ADDED */
+            // Chagned the logic to not get carriers stuck in the middle of combat if their interceptors got killed
+            bool ret = the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
+            if (u->isUnderAttack() || the.hits(u) > 0) {
+                return false;
+            }
+            return ret;
         }
     }
 
@@ -938,13 +944,14 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     // AirToAir logic
     if (cluster.air && cluster.groundDPF == 0 && cluster.airDPF >= 0) {
         bool hasAirThreat = false;
-
+        int enemyCount = 0;
         for (const auto& kv : InformationManager::Instance().getUnitData(BWAPI::Broodwar->enemy()).getUnits()) {
             const UnitInfo& ui = kv.second;
 
             if (!ui.lastPosition.isValid()) continue;
 
             if (cluster.center.getDistance(ui.lastPosition) < _combatSimRadius) {
+                enemyCount++;
                 if (ui.type.airWeapon() != BWAPI::WeaponTypes::None) {
                     hasAirThreat = true;
                     break;
@@ -952,7 +959,7 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
             }
         }
 
-        if (!hasAirThreat) {
+        if (!hasAirThreat && enemyCount > 0) {
             _regroupStatus = green + std::string("Free airspace");
             return false; // never regroup
         }

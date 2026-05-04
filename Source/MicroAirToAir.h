@@ -56,8 +56,8 @@ public:
     // Returns a perpendicular displacement of the given vector
     BWAPI::Position perpendicularOffset(const BWAPI::Position& v, float displace) {
         // Perpendicular vector (rotate 90 degrees)
-        float px = -v.y;
-        float py = v.x;
+        float px = (float)  - v.y;
+        float py = (float) v.x;
 
         // Length of perpendicular vector
         float len = std::sqrt(px * px + py * py);

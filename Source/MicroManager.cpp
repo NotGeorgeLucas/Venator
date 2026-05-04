@@ -4,6 +4,7 @@
 #include "MapGrid.h"
 #include "MapTools.h"
 #include "The.h"
+#include "Bases.h"
 #include "UnitUtil.h"
 
 using namespace UAlbertaBot;
@@ -405,16 +406,30 @@ void MicroManager::regroup(const BWAPI::Position & regroupPosition, const UnitCl
         else
         {
             // We have retreated to a good position. Stay put.
-            if (unit->getType() == BWAPI::UnitTypes::Protoss_Carrier)
-            {
-                // Carriers can still attack while "regrouped"
-                BWAPI::Unit target = BWAPI::Broodwar->getClosestUnit(unit->getPosition(), BWAPI::Filter::IsEnemy && BWAPI::Filter::IsDetected, 10 * 32);
+            if (unit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
+                /* CODE ADDED */
+                // Carriers used to want to attack while regrouped even if they had no interceptors
 
-                if (target)
-                {
-                    the.micro.AttackUnit(unit, target);
-                    continue;
+                if (unit->getInterceptorCount() >= 2) {
+                    // Carriers can still attack while "regrouped"
+                    BWAPI::Unit target = BWAPI::Broodwar->getClosestUnit(
+                        unit->getPosition(),
+                        BWAPI::Filter::IsEnemy && BWAPI::Filter::IsDetected,
+                        10 * 32
+                    );
+                    if (target) {
+                        the.micro.AttackUnit(unit, target);
+                    }
+                    else {
+                        the.micro.HoldPosition(unit);
+                    }
                 }
+                else
+                {
+                    // Just go back to main, better than being in the fight with no interceptors
+                    the.micro.MoveNear(unit, the.bases.myMain()->getPosition());
+                }
+                continue;
             }
 
             if (unit->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Tank_Mode || unit->getType() == BWAPI::UnitTypes::Zerg_Lurker)
