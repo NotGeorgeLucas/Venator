@@ -317,6 +317,12 @@ int MicroMelee::getAttackPriority(BWAPI::Unit attacker, BWAPI::Unit target) cons
     }
     if (targetType.isWorker() && (target->isRepairing() || target->isConstructing() || unitNearChokepoint(target)))
     {
+        /* CODE ADDED */
+        // Focus on workers repairing other workers, because that's a very high priority and happens only in worker base rushes 
+        if (target->isRepairing() && target->getTarget() && target->getTarget()->getType() == BWAPI::UnitTypes::Terran_SCV) {
+            return 14;
+        }
+
         return 12;
     }
     // next priority is bored workers and turrets

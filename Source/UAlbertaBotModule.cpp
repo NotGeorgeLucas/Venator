@@ -43,7 +43,7 @@ void UAlbertaBotModule::onStart()
 
     if (Config::BotInfo::PrintInfoOnStart)
     {
-        BWAPI::Broodwar->printf("%s by %s, based on UAlbertaBot.", Config::BotInfo::BotName.c_str(), Config::BotInfo::Authors.c_str());
+        BWAPI::Broodwar->printf("%s by %s, based on SteahHammer.", Config::BotInfo::BotName.c_str(), Config::BotInfo::Authors.c_str());
         if (Config::Skills::HumanOpponent)
         {
             GameMessage("gl hf");

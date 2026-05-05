@@ -579,11 +579,18 @@ bool Squad::unreadyUnit(BWAPI::Unit u)
         {
             /* CODE ADDED */
             // Chagned the logic to not get carriers stuck in the middle of combat if their interceptors got killed
-            bool ret = the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
-            if (u->isUnderAttack() || the.hits(u) > 0) {
-                return false;
+            bool inDanger = u->isUnderAttack() || the.hits(u) > 0;
+
+            if (!inDanger) {
+                if (u->canTrain(BWAPI::UnitTypes::Protoss_Interceptor) && !u->isTraining()) {
+                    return the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
+                }
             }
-            return ret;
+            else {
+                the.micro.Move(u, the.bases.myMain()->getPosition());
+            }
+
+            return false;
         }
     }
 
@@ -1321,6 +1328,12 @@ bool Squad::unitNearEnemy(BWAPI::Unit unit)
 
     // NOTE The numbers match with CombatSimulation::getClosestEnemyCombatUnit().
     int safeDistance = (!unit->isFlying() && InformationManager::Instance().enemyHasSiegeMode()) ? 15*32 : 11*32;
+
+    /* CODE ADDED */
+    // Exception to keep corsairs from getting stuck if enemy natural gets destroyed
+    if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair) {
+        safeDistance *= 2.5;
+    }
 
     // For each enemy unit, visible or not.
     for (const auto & kv : InformationManager::Instance().getUnitData(BWAPI::Broodwar->enemy()).getUnits())

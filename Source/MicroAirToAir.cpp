@@ -120,6 +120,44 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
         );
     }
 
+    auto hasStructureNearby = [&](const BWAPI::Position& pos, BWAPI::UnitType building) -> bool {
+        if (!pos.isValid()) return true;
+
+        const auto& enemies = InformationManager::Instance().getUnitInfo(the.enemy());
+
+        for (const auto& kv : enemies) {
+            const UnitInfo& ui = kv.second;
+
+            if (ui.type != building)
+                continue;
+
+            if (ui.goneFromLastPosition || ui.lifted)
+                continue;
+
+            BWAPI::Position tile = ui.lastPosition;
+
+            if (BWAPI::Broodwar->isVisible(BWAPI::TilePosition(tile))) {
+                bool exists = false;
+
+                for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(tile, 32)) {
+                    if (u->getPlayer() == BWAPI::Broodwar->enemy() &&
+                        u->getType() == building) {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (!exists)
+                    continue; // memory is wrong, ignore it
+            }
+
+            if (ui.lastPosition.getDistance(pos) <= 8 * 32)
+                return true;
+        }
+
+        return false;
+        };
+
     for (BWAPI::Unit airUnit : airUnits)
     {
 
@@ -133,8 +171,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
         if (order->isCombatOrder() || isHunter)
         {
             BWAPI::Unit target = getTarget(airUnit, airTargets);
-            if (target)
-            {
+            if (target && !hasStructureNearby(target->getPosition(), BWAPI::UnitTypes::Zerg_Spore_Colony)) {
                 // A target was found.
                 if (Config::Debug::DrawUnitTargets)
                 {
@@ -144,17 +181,19 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
                 /* CODE ADDED */
                 // Added the whole threat avoidance and overlord hunting logic
-                std::vector<UnitInfo> enemyForce;
-                InformationManager::Instance().getNearbyForce(enemyForce, airUnit->getPosition(), the.enemy(), 15 * 32);
+                const auto & enemyForce = InformationManager::Instance().getUnitInfo(the.enemy());
 
                 // Threats are enemies that can hit us and we can't hit back
                 std::vector<BWAPI::Unit> threatVector;
-                for (auto& ui : enemyForce) {
-                    if (ui.unit && ui.unit->exists()) {
-                        auto u = ui.unit;
-                        if ((!u->isFlying() && u->getType().airWeapon() != BWAPI::WeaponTypes::None)
-                            || u->getType() == BWAPI::UnitTypes::Zerg_Spore_Colony) {   // Spores could be getting built and don't technically have weapons while they are being constructed
-                            threatVector.push_back(u);
+                for (auto& kv : enemyForce) {
+                    UnitInfo ui = kv.second;
+                    if (ui.lastPosition.getDistance(airUnit->getPosition())) {
+                        if (ui.unit && ui.unit->exists()) {
+                            auto u = ui.unit;
+                            if ((!u->isFlying() && u->getType().airWeapon() != BWAPI::WeaponTypes::None)
+                                || u->getType() == BWAPI::UnitTypes::Zerg_Spore_Colony) {   // Spores could be getting built and don't technically have weapons while they are being constructed
+                                threatVector.push_back(u);
+                            }
                         }
                     }
                 }
@@ -339,7 +378,7 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
         // We care about unit-target range and target-order position distance.
         int score = 0;
         if (target->getType() == BWAPI::UnitTypes::Zerg_Overlord) {
-            score = 5 * 32 * priority - (int)((double)range / 2.0);
+            score = 5 * 32 * priority - (int)((double)range / 5.0);
         }
         else {
             score = 5 * 32 * priority - range;
@@ -426,28 +465,89 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
 void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Position& enemyBase, const BWAPI::Position& enemyNatural) {
     std::vector<BWAPI::Position> patrolPoints;
 
+    
 
-    auto hasSporeNearby = [&](const BWAPI::Position& pos) -> bool {
-            if (!pos.isValid()) return true; // treat invalid as unsafe
+    auto hasStructureNearby = [&](const BWAPI::Position& pos, BWAPI::UnitType building) -> bool {
+            if (!pos.isValid()) return true;
 
-            for (auto& u : BWAPI::Broodwar->enemy()->getUnits())
-            {
-                if (!u || !u->exists()) continue;
+            const auto& enemies = InformationManager::Instance().getUnitInfo(the.enemy());
 
-                if (u->getType() != BWAPI::UnitTypes::Zerg_Spore_Colony)
+            for (const auto& kv : enemies) {
+                const UnitInfo& ui = kv.second;
+
+                if (ui.type != building)
                     continue;
 
-                if (u->getDistance(pos) <= 7 * 32)
+                if (ui.goneFromLastPosition || ui.lifted)
+                    continue;
+
+                BWAPI::Position tile = ui.lastPosition;
+
+                if (BWAPI::Broodwar->isVisible(BWAPI::TilePosition(tile))) {
+                    bool exists = false;
+
+                    for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(tile, 32)) {
+                        if (u->getPlayer() == BWAPI::Broodwar->enemy() &&
+                            u->getType() == building) {
+                            exists = true;
+                            break;
+                        }
+                    }
+
+                    if (!exists)
+                        continue; // memory is wrong, ignore it
+                }
+
+                if (ui.lastPosition.getDistance(pos) <= 8 * 32)
                     return true;
             }
+
             return false;
         };
 
+    auto hasZergBaseNearby = [&](const BWAPI::Position& pos) -> bool {
+            if (!pos.isValid()) return true;
 
-    if (enemyBase.isValid() && !hasSporeNearby(enemyBase))
+            const auto& enemies = InformationManager::Instance().getUnitInfo(the.enemy());
+
+            for (const auto& kv : enemies) {
+                const UnitInfo& ui = kv.second;
+
+                // We care about resource depots in this case
+                if (!ui.type.isResourceDepot())
+                    continue;
+                
+                if (ui.goneFromLastPosition || ui.lifted)
+                    continue;
+
+                BWAPI::Position tile = ui.lastPosition;
+
+                if (BWAPI::Broodwar->isVisible(BWAPI::TilePosition(tile))) {
+                    bool exists = false;
+
+                    for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(tile, 32)) {
+                        if (u->getPlayer() == BWAPI::Broodwar->enemy() &&
+                            u->getType().isResourceDepot()) {
+                            exists = true;
+                            break;
+                        }
+                    }
+
+                    if (!exists)
+                        continue; // memory is wrong, ignore it
+                }
+
+                if (ui.lastPosition.getDistance(pos) <= 10 * 32) // slightly bigger radius than looking for spores
+                    return true;
+            }
+
+            return false;
+        };
+
+    if (enemyBase.isValid() && hasZergBaseNearby(enemyBase) && !hasStructureNearby(enemyBase, BWAPI::UnitTypes::Zerg_Spore_Colony))
         patrolPoints.push_back(enemyBase);
 
-    if (enemyNatural.isValid() && !hasSporeNearby(enemyNatural))
+    if (enemyNatural.isValid() && hasZergBaseNearby(enemyNatural) && !hasStructureNearby(enemyNatural, BWAPI::UnitTypes::Zerg_Spore_Colony))
         patrolPoints.push_back(enemyNatural);
 
     if (patrolPoints.empty()) {
@@ -461,6 +561,11 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
     }
 
     BWAPI::Position currentTarget = currentUnitTargetPoint[airUnit];
+
+
+    if (hasStructureNearby(enemyBase, BWAPI::UnitTypes::Zerg_Spore_Colony)) {
+        currentUnitTargetPoint[airUnit] = patrolPoints[0];
+    }
 
     // Switch if reached
     if (airUnit->getDistance(currentTarget) < 4 * 32) {

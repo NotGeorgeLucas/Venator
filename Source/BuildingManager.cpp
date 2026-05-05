@@ -846,7 +846,7 @@ void BuildingManager::cancelBuildingType(BWAPI::UnitType t)
     }
 }
 
-BWAPI::TilePosition BuildingManager::getBuildingLocation(const Building & b)
+BWAPI::TilePosition BuildingManager::getBuildingLocation(Building & b)
 {
     if (b.isGasSteal)
     {

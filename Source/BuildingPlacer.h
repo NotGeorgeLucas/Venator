@@ -40,7 +40,7 @@ class BuildingPlacer
     BWAPI::TilePosition findEdgeLocation(const Building & b) const;
     BWAPI::TilePosition findPylonlessBaseLocation(const Building & b) const;
     BWAPI::TilePosition findGroupedLocation(const Building & b) const;
-    BWAPI::TilePosition findSpecialLocation(const Building & b);
+    BWAPI::TilePosition findSpecialLocation(Building & b);
     BWAPI::TilePosition findAnyLocation(const Building & b, int extraSpace) const;
 
     /* CODE ADDED */
@@ -76,7 +76,7 @@ public:
     void initialize();
 
     // Return a build location near a building's desired location, with the given margin of space.
-    BWAPI::TilePosition	getBuildLocationNear(const Building & b, int extraSpace);
+    BWAPI::TilePosition	getBuildLocationNear(Building & b, int extraSpace);
 
     void				reserveTiles(const BWAPI::TilePosition & position, int width, int height);
     void				freeTiles(const BWAPI::TilePosition & position, int width, int height);

@@ -440,10 +440,25 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
     }
     if (!cInfo.shouldGoHighground || !foundTile) {
 
+        std::vector<std::pair<BWAPI::Unit, int>> nearbyTargets;
+
+        const auto & enemyForceMap = InformationManager::Instance().getUnitInfo(the.enemy());
+        BWAPI::Position pos = carrier->getPosition();
+
         std::vector<UnitInfo> enemyForce;
 
-        std::vector<std::pair<BWAPI::Unit, int>> nearbyTargets;
-        InformationManager::Instance().getNearbyForce(enemyForce, carrier->getPosition(), the.enemy(), 20 * 32);
+        for (const auto& kv : enemyForceMap)
+        {
+            const UnitInfo& ui = kv.second;
+
+            if (!ui.unit || !ui.unit->exists()) continue;
+            if (ui.goneFromLastPosition) continue;
+
+            if (ui.isCompleted() && ui.powered)
+            {
+                enemyForce.push_back(ui);
+            }
+        }
 
         for (auto ui : enemyForce) {
             if (!ui.unit || !ui.unit->exists()) continue;
@@ -540,8 +555,9 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
 
             for (const auto& kv : carrierToGoliathMap)
             {
+                BWAPI::Unit c = kv.first;
                 BWAPI::Unit g = kv.second;
-                if (g && g->exists() && g == target)
+                if (g && g->exists() && g == target && c != rangedUnit)
                 {
                     numTargeting++;
                 }

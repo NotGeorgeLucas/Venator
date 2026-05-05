@@ -44,7 +44,7 @@ public:
     Building &		    addTrackedBuildingTask(const MacroAct & act, BWAPI::TilePosition desiredLocation, BWAPI::Unit builder, bool isGasSteal);
     void                addBuildingTask(const MacroAct & act, BWAPI::TilePosition desiredLocation, BWAPI::Unit builder, bool isGasSteal);
     void                drawBuildingInformation(int x,int y);
-    BWAPI::TilePosition getBuildingLocation(const Building & b);
+    BWAPI::TilePosition getBuildingLocation(Building & b);
 
     int                 getReservedMinerals() const;
     int                 getReservedGas() const;

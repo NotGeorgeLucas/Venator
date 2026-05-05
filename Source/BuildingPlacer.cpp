@@ -567,7 +567,7 @@ BWAPI::TilePosition BuildingPlacer::findGroupedLocation(const Building & b) cons
 }
 
 // Some buildings get special-case placement.
-BWAPI::TilePosition BuildingPlacer::findSpecialLocation(const Building & b)
+BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
 {
     BWAPI::TilePosition tile = BWAPI::TilePositions::None;
 
@@ -585,6 +585,44 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(const Building & b)
     else if (b.type == BWAPI::UnitTypes::Protoss_Pylon)
     {
         tile = findPylonlessBaseLocation(b);
+
+        /* CODE ADDED */
+        // Should hopefully fix the issues with pylon @ expo
+
+
+        BWAPI::TilePosition mainTile = the.bases.myStart()->getTilePosition();
+
+        int distToMain = tile.getDistance(mainTile);
+
+        // If we ended up too close to main
+        if (b.macroLocation == MacroLocation::Expo && distToMain < 15 * 32) {
+            Base* expo = the.map.nextExpansion(false, true, true);
+
+            if (expo) {
+
+                // Try to force expo tile logic
+                BWAPI::TilePosition expoTile = expo->getTilePosition();
+                BWAPI::TilePosition mainTile = the.bases.myStart()->getTilePosition();
+
+                distToMain = expoTile.getDistance(mainTile);
+
+                // if this "expo" is STILL basically our main, reject it
+                if (distToMain < 15 * 32) {
+                    // Force natural location
+                    Base* natural = the.bases.myNatural();
+                    if (natural) {
+                        expoTile = natural->getFrontTile();
+                    }
+                    else {
+                        return findAnyLocation(b, 0);
+                    }
+                }
+
+                BWAPI::TilePosition pos = BWAPI::TilePosition(expoTile);
+                return findAnyLocation(Building(b.type, pos), 0);
+            }
+        }
+
     }
     /* CODE ADDED */
     else if (b.type == BWAPI::UnitTypes::Protoss_Forge && b.macroLocation == MacroLocation::Front) {
@@ -947,7 +985,7 @@ void BuildingPlacer::initialize()
 // Place a building other than an expansion.
 // The minimum distance between buildings is extraSpace, the extra space we check
 // for accessibility around each potential building location.
-BWAPI::TilePosition BuildingPlacer::getBuildLocationNear(const Building & b, int extraSpace)
+BWAPI::TilePosition BuildingPlacer::getBuildLocationNear(Building & b, int extraSpace)
 {
     // BWAPI::Broodwar->printf("Building Placer seeks position near %d, %d", b.desiredPosition.x, b.desiredPosition.y);
 
