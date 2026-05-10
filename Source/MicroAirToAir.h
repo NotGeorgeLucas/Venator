@@ -34,12 +34,20 @@ public:
         double dx = x2 - x1;
         double dy = y2 - y1;
 
+        double lenSq = dx * dx + dy * dy;
+
+        // Handle degenerate segment (point)
+        if (lenSq < 1e-6) {
+            return dist2(x1, y1, cx, cy) <= r * r;
+        }
+
+
         // Vector from A to circle center
         double fx = cx - x1;
         double fy = cy - y1;
 
         // Project center onto the segment, get parameter t
-        double t = (fx * dx + fy * dy) / (dx * dx + dy * dy);
+        double t = (fx * dx + fy * dy) / lenSq;
 
         // Clamp t to segment [0,1]
         if (t < 0.0) t = 0.0;

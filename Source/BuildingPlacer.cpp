@@ -593,9 +593,11 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
         BWAPI::TilePosition mainTile = the.bases.myStart()->getTilePosition();
 
         int distToMain = tile.getDistance(mainTile);
+        //linesToDraw.push_back(MapLine{48 * 32, 64 * 32, tile.x * 23, tile.y * 32, BWAPI::Colors::Red});
+        //boxesToDraw.push_back(MapBox{tile.x * 32, tile.y * 32, 32, 32, BWAPI::Colors::Red});
 
         // If we ended up too close to main
-        if (b.macroLocation == MacroLocation::Expo && distToMain < 15 * 32) {
+        if (b.macroLocation == MacroLocation::Expo && (!tile.isValid() || distToMain < 20 * 32)) {
             Base* expo = the.map.nextExpansion(false, true, true);
 
             if (expo) {
@@ -607,7 +609,7 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
                 distToMain = expoTile.getDistance(mainTile);
 
                 // if this "expo" is STILL basically our main, reject it
-                if (distToMain < 15 * 32) {
+                if (!tile.isValid() || distToMain < 20 * 32) {
                     // Force natural location
                     Base* natural = the.bases.myNatural();
                     if (natural) {

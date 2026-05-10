@@ -353,7 +353,11 @@ void ParseUtils::ParseConfigFile(const std::string & filename)
         }
 
         // 2. Does the opponent model tell us what opening to play?
-        if (!openingStrategyDecided && OpponentModel::Instance().getRecommendedOpening() != "")
+
+        /* CODE ADDED */
+        // The easiest way of disabling per-opponent strategy prediction I could find
+        if (false && // Just keep the gimmick
+            !openingStrategyDecided && OpponentModel::Instance().getRecommendedOpening() != "")
         {
             const std::string & opening = OpponentModel::Instance().getRecommendedOpening();
 

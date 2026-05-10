@@ -125,7 +125,7 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
 
         /* CODE ADDED */
         // Override logic for going straight for enemy base
-        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 5) {
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 4) {
             if (_currentBaseTarget == nullptr) {
                 _currentBaseTarget = the.bases.enemyStart();
             }
@@ -296,7 +296,7 @@ BWAPI::Position MicroRanged::computeCarrierVector(BWAPI::Unit carrier, const std
         double dy = diff.y / dist;
 
         // Distance falloff (closer = stronger)
-        double weight = priority * (1.0 / dist);
+        double weight = priority * (32.0 / dist);
 
         // Threat detection (very rough)
         bool isThreat = false;

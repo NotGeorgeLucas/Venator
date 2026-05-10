@@ -1016,9 +1016,9 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
 
     for (BWAPI::Unit u : BWAPI::Broodwar->self()->getUnits())
     {
-        if (u->getType() == BWAPI::UnitTypes::Protoss_Nexus && u->isPowered())
+        if (u->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon && u->isPowered())
         {
-            if (cluster.center.getDistance(u->getPosition()) < 13 * 32)
+            if (cluster.center.getDistance(u->getPosition()) < 8 * 32)
             {
                 nearStaticDef = true;
                 break;

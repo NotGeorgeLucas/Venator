@@ -1177,6 +1177,7 @@ void CombatCommander::updateBaseDefenseSquads()
         int nEnemySupply = 0;
         int nEnemyWorkers = 0;
         int nEnemyRepairingWorkers = 0;
+        int nEnemyAttackingWorkers = 0;
         int nEnemyGround = 0;
         int nEnemyAir = 0;
         bool enemyHitsGround = false;
@@ -1218,9 +1219,15 @@ void CombatCommander::updateBaseDefenseSquads()
                 {
                     ++nEnemyWorkers;
                     /* CODE ADDED */
-                    // Very specific anti-worker-rush case
+                    // Very specific anti-worker-rush cases
                     if (unit->isRepairing() && unit->getTarget() && unit->getTarget()->getType().isWorker()) {
                         ++nEnemyRepairingWorkers;
+                    }
+                    else {
+                        auto target = unit->getTarget();
+                        if (target != nullptr && target->getType().isWorker() && target->getPlayer() != BWAPI::Broodwar->enemy()) {
+                            nEnemyAttackingWorkers++;
+                        }
                     }
                 }
                 else if (unit->isFlying())
@@ -1428,8 +1435,8 @@ void CombatCommander::updateBaseDefenseSquads()
         const bool enemyProxy = buildingRush();
         const int workerDist = enemyProxy ? pullWorkerVsBuildingDistance : pullWorkerDistance;
 
-        bool workersInBaseRange = closestEnemyDistance < 4 * 32;
-        bool workerRush = (nEnemyWorkers >= 2 && workersInBaseRange) || nEnemyRepairingWorkers > 0;
+        bool workersInBaseRange = closestEnemyDistance < 6 * 32;
+        bool workerRush = (nEnemyWorkers >= 2 || nEnemyRepairingWorkers > 0 || nEnemyAttackingWorkers > 0) && workersInBaseRange;
 
         const bool pullWorkers =
             Config::Micro::WorkersDefendRush &&

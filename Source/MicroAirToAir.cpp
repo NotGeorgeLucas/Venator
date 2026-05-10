@@ -187,7 +187,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                 std::vector<BWAPI::Unit> threatVector;
                 for (auto& kv : enemyForce) {
                     UnitInfo ui = kv.second;
-                    if (ui.lastPosition.getDistance(airUnit->getPosition())) {
+                    if (ui.lastPosition.isValid() && ui.lastPosition.getDistance(airUnit->getPosition()) <= 8 * 32) {
                         if (ui.unit && ui.unit->exists()) {
                             auto u = ui.unit;
                             if ((!u->isFlying() && u->getType().airWeapon() != BWAPI::WeaponTypes::None)
@@ -282,6 +282,11 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     BWAPI::Position dir = end - start;
                     BWAPI::Position midpoint = start + dir / 2;
 
+                    if (dir == BWAPI::Position(0, 0)) {
+                        the.micro.AttackUnit(airUnit, target);
+                        continue;
+                    }
+
                     double midpointDist = airUnit->getPosition().getApproxDistance(midpoint);
 
                     bool moved = false;
@@ -295,6 +300,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
                         auto evaluateCandidate = [&](const BWAPI::Position& p) -> bool {
                             for (auto& threat : threatVector) {
+                                if (!p.isValid()) return false;
                                 BWAPI::Position tPos = threat->getPosition();
                                 int range = UnitUtil::GetAttackRange(threat, airUnit) + 32;
 
