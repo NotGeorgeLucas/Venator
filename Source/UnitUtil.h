@@ -39,6 +39,8 @@ namespace UnitUtil
     double GroundDPF(BWAPI::Player player, BWAPI::UnitType type);
     double AirDPF(BWAPI::Player player, BWAPI::UnitType type);
 
+    bool isHoveringGroundUnit(BWAPI::Unit unit);
+
     bool CanAttack(BWAPI::Unit attacker, BWAPI::Unit target);
     bool CanAttack(BWAPI::UnitType attacker, BWAPI::Unit target);
     bool CanAttack(BWAPI::UnitType attacker, BWAPI::UnitType target);

@@ -38,10 +38,10 @@ class BuildingPlacer
     bool	groupTogether(BWAPI::UnitType type) const;
 
     BWAPI::TilePosition findEdgeLocation(const Building & b) const;
-    BWAPI::TilePosition findPylonlessBaseLocation(const Building & b) const;
+    BWAPI::TilePosition findPylonlessBaseLocation(const Building & b);
     BWAPI::TilePosition findGroupedLocation(const Building & b) const;
     BWAPI::TilePosition findSpecialLocation(Building & b);
-    BWAPI::TilePosition findAnyLocation(const Building & b, int extraSpace) const;
+    BWAPI::TilePosition findAnyLocation(const Building & b, int extraSpace);
 
     /* CODE ADDED */
     BWAPI::TilePosition findForgeLocation(const Building& b);
@@ -64,9 +64,14 @@ class BuildingPlacer
         int x1, y1, x2, y2;
         BWAPI::Color c;
     };
+    struct MapCircle {
+        int cx, cy, r;
+        BWAPI::Color c;
+    };
 
     std::vector<MapBox> boxesToDraw = {};
     std::vector<MapLine> linesToDraw = {};
+    std::vector<MapCircle> circlesToDraw = {};
 
     int     countInRange(const BWAPI::Unitset & units, BWAPI::Position xy, int range) const;
 

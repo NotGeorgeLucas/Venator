@@ -309,11 +309,14 @@ void Bases::updateEnemyStart()
     }
 
     // Call only when enemyStartingBase is unknown (null).
-    if (inferEnemyBaseFromOverlord())
-    {
-        // We were able to deduce the enemy's location by seeing an overlord.
-        return;
-    }
+    /* CODE ADDED */
+    // Rather removed, this commented out section was often just wrong because overlords could make a circle around the map instead of being sent directly
+    // And even if it worked properly, chances are it wasn't useful information because we always scout
+    //if (inferEnemyBaseFromOverlord())
+    //{
+    //    // We were able to deduce the enemy's location by seeing an overlord.
+    //    return;
+    //}
 
     size_t nExplored = 0;
     Base * unexploredBase;

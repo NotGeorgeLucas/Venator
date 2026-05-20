@@ -1184,8 +1184,22 @@ void CombatCommander::updateBaseDefenseSquads()
         bool enemyHitsAir = false;
         bool enemyHasCloak = false;
 
+
+        /* CODE ADDED */
+        // Cannon rush detection
+        bool proxyPylonNearBase = false;
+
         for (BWAPI::Unit unit : the.enemy()->getUnits())
         {
+            if (unit->getType() == BWAPI::UnitTypes::Protoss_Pylon) {
+                const int dist = unit->getDistance(base->getCenter());
+
+                if (dist < 18 * 32) {
+                    proxyPylonNearBase = true;
+                }
+            }
+
+
             if (unit->isInvincible() || unit->getType().isSpell())
             {
                 continue;
@@ -1438,10 +1452,13 @@ void CombatCommander::updateBaseDefenseSquads()
         bool workersInBaseRange = closestEnemyDistance < 6 * 32;
         bool workerRush = (nEnemyWorkers >= 2 || nEnemyRepairingWorkers > 0 || nEnemyAttackingWorkers > 0) && workersInBaseRange;
 
+        // Proxy pylon at three minutes is a good enough sign. Later we should have zealots, earlier it's cannon rush when we only have probes
+        bool cannonRush = proxyPylonNearBase && (the.now() <= 3 * 34 * 60);
+
         const bool pullWorkers =
             Config::Micro::WorkersDefendRush &&
             closestEnemyDistance <= (wePulledWorkers ? workerDist + pullWorkerHysteresis : workerDist) &&
-            (enemyProxy || !sunkenDefender && numZerglingsInOurBase() > 2 || workerRush);
+            (enemyProxy || !sunkenDefender && numZerglingsInOurBase() > 2 || workerRush || cannonRush);
 
         if (wePulledWorkers && !pullWorkers)
         {
@@ -1458,7 +1475,7 @@ void CombatCommander::updateBaseDefenseSquads()
         maybeAssignDetector(defenseSquad, wantDetector);
 
         // Estimate roughly whether overlords spawned here may be in danger.
-        if (the.airHitsFixed.inRange(base->getDepot())
+        if (base->getDepot() && the.airHitsFixed.inRange(base->getDepot())
                 ||
             enemyHitsAir &&
             groundDefendersNeeded + flyingDefendersNeeded > 1 &&
@@ -1470,7 +1487,7 @@ void CombatCommander::updateBaseDefenseSquads()
 
         // Estimate roughly whether the workers may be in danger.
         // If they are not at immediate risk, they should keep mining and we should even be willing to transfer in more.
-        if (the.groundHitsFixed.inRange(base->getDepot())
+        if (base->getDepot() && the.groundHitsFixed.inRange(base->getDepot())
                 ||
             enemyHitsGround &&
             groundDefendersNeeded > 1 &&
@@ -1487,7 +1504,7 @@ void CombatCommander::updateBaseDefenseSquads()
         if (enemyHitsGround &&
             groundDefendersNeeded + flyingDefendersNeeded >= 8 &&
             int(defenseSquad.getUnits().size()) * 6 < groundDefendersNeeded + flyingDefendersNeeded &&
-            (closestEnemyDistance <= 6 * 32 || the.groundHitsFixed.inRange(base->getDepot())) &&
+            (closestEnemyDistance <= 6 * 32 || (base->getDepot() && the.groundHitsFixed.inRange(base->getDepot()))) &&
             base->getNumUnits(UnitUtil::GetGroundStaticDefenseType(the.selfRace())) == 0)
         {
             base->setDoomed(true);

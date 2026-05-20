@@ -333,6 +333,8 @@ void Squad::clusterCombat(const UnitCluster & cluster)
         _microScourge.execute(cluster);
         _microTanks.execute(cluster);
 
+        _microArbiters.execute(cluster);
+
         _microLurkers.setTactic(_lurkerTactic);
         _microLurkers.execute(cluster);
     }
@@ -355,6 +357,8 @@ void Squad::clusterCombat(const UnitCluster & cluster)
         _microRanged.regroup(_regroupPosition, cluster);
         _microScourge.regroup(_regroupPosition, cluster);
         _microTanks.regroup(_regroupPosition, cluster);
+
+        _microArbiters.regroup(_regroupPosition, cluster);
 
         // Aggressive lurkers do not regroup, but always execute their order.
         if (_lurkerTactic == LurkerTactic::Aggressive)
@@ -575,23 +579,27 @@ bool Squad::unreadyUnit(BWAPI::Unit u)
     }
     else if (u->getType() == BWAPI::UnitTypes::Protoss_Carrier)
     {
-        if (u->canTrain(BWAPI::UnitTypes::Protoss_Interceptor) && !u->isTraining())
-        {
-            /* CODE ADDED */
-            // Chagned the logic to not get carriers stuck in the middle of combat if their interceptors got killed
-            bool inDanger = u->isUnderAttack() || the.hits(u) > 0;
+        /* CODE ADDED */
+        // Chagned the logic to not get carriers stuck in the middle of combat if their interceptors got killed
+        // Also, don't send them out alone
+        const int interceptors = u->getInterceptorCount();
 
-            if (!inDanger) {
-                if (u->canTrain(BWAPI::UnitTypes::Protoss_Interceptor) && !u->isTraining()) {
-                    return the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
-                }
-            }
-            else {
-                the.micro.Move(u, the.bases.myMain()->getPosition());
-            }
-
-            return false;
+        // Always rebuild interceptors when possible.
+        if (u->canTrain(BWAPI::UnitTypes::Protoss_Interceptor) && !u->isTraining()) {
+            the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
         }
+
+        // ONLY treat carrier as "unready" before combat,
+        // when interceptor count is critically low.
+        bool nearEnemy = _nearEnemy.find(u) != _nearEnemy.end() && _nearEnemy[u];
+
+        if ((!nearEnemy && interceptors < 3) || (nearEnemy && interceptors == 0)) {
+            // Stay behind until minimally armed.
+            the.micro.Move(u, finalRegroupPosition(_units));
+            return true;
+        }
+
+        return false;
     }
 
     return false;
@@ -707,6 +715,8 @@ void Squad::setOrderForMicroManagers()
     _microScourge.setOrder(_order);
     _microTanks.setOrder(_order);
     _microTransports.setOrder(_order);
+
+    _microArbiters.setOrder(_order);
 }
 
 void Squad::addUnitsToMicroManagers()
@@ -726,6 +736,10 @@ void Squad::addUnitsToMicroManagers()
     BWAPI::Unitset queenUnits;
     BWAPI::Unitset tankUnits;
     BWAPI::Unitset medicUnits;
+
+    /* CODE ADDED */
+    // More micro
+    BWAPI::Unitset arbiterUnits;
 
     // We will assign zerglings as defiler food. The defiler micro manager will control them.
     int defilerFoodWanted = 0;
@@ -806,6 +820,9 @@ void Squad::addUnitsToMicroManagers()
             {
                 transportUnits.insert(unit);
             }
+            else if (unit->getType() == BWAPI::UnitTypes::Protoss_Arbiter) {
+                arbiterUnits.insert(unit);
+            }
             // NOTE This excludes spellcasters (except arbiters, which have a regular weapon too).
             else if (unit->getType().groundWeapon().maxRange() > 32 ||
                 unit->getType() == BWAPI::UnitTypes::Protoss_Reaver ||
@@ -863,6 +880,8 @@ void Squad::addUnitsToMicroManagers()
     _microQueens.setUnits(queenUnits);
     _microTanks.setUnits(tankUnits);
     _microTransports.setUnits(transportUnits);
+
+    _microArbiters.setUnits(arbiterUnits);
 }
 
 // Calculates whether to regroup, aka retreat. Does combat sim if necessary.
@@ -1330,7 +1349,7 @@ bool Squad::unitNearEnemy(BWAPI::Unit unit)
     int safeDistance = (!unit->isFlying() && InformationManager::Instance().enemyHasSiegeMode()) ? 15*32 : 11*32;
 
     /* CODE ADDED */
-    // Exception to keep corsairs from getting stuck if enemy natural gets destroyed
+    // Exception to keep corsairs from getting stuck sometimes
     if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair) {
         safeDistance *= 2.5;
     }
@@ -1340,10 +1359,21 @@ bool Squad::unitNearEnemy(BWAPI::Unit unit)
     {
         const UnitInfo & ui(kv.second);
 
+
         if (ui.lastPosition.isValid() && !ui.goneFromLastPosition)
         {
             if (unit->getDistance(ui.lastPosition) <= safeDistance)
             {
+                /* CODE ADDED */
+                // Stop units from getting stuck looking at a cloaked observer
+                // Or mines, if we fly or float
+                if (ui.unit && ui.unit->exists() &&     // Enemy exists
+                    (ui.type == BWAPI::UnitTypes::Protoss_Observer  // It's a harmless observer
+                || (ui.type == BWAPI::UnitTypes::Terran_Vulture_Spider_Mine && (unit->isFlying() || UnitUtil::isHoveringGroundUnit(unit)))) // Or it's a spider mine that can't hit us
+                && !ui.unit->isDetected()) { // And we don't currently see the unit
+                    continue;
+                }
+
                 return true;
             }
         }

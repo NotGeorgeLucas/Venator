@@ -5,6 +5,20 @@
 
 using namespace UAlbertaBot;
 
+
+
+/* CODE ADDED */
+// Way to tell if the unit is hovering (don't trigger spider mines)
+bool UnitUtil::isHoveringGroundUnit(BWAPI::Unit unit) {
+    BWAPI::UnitType t = unit->getType();
+
+    return
+        t == BWAPI::UnitTypes::Protoss_Dark_Archon ||
+        t == BWAPI::UnitTypes::Terran_SCV ||
+        t.isWorker();
+}
+
+
 // A tech building: It allows technology rather than production or defense.
 // Every tech building can either upgrade or research something.
 // Exclude zerg hatchery because it is primarily a production building (though it can research burrow).

@@ -442,7 +442,7 @@ BWAPI::TilePosition BuildingPlacer::findEdgeLocation(const Building & b) const
 }
 
 // Try to put a pylon at every base.
-BWAPI::TilePosition BuildingPlacer::findPylonlessBaseLocation(const Building & b) const
+BWAPI::TilePosition BuildingPlacer::findPylonlessBaseLocation(const Building & b)
 {
     if (b.macroLocation != MacroLocation::Anywhere)
     {
@@ -582,49 +582,8 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
             tile = findGroupedLocation(b);
         }
     }
-    else if (b.type == BWAPI::UnitTypes::Protoss_Pylon)
-    {
-        tile = findPylonlessBaseLocation(b);
-
-        /* CODE ADDED */
-        // Should hopefully fix the issues with pylon @ expo
-
-
-        BWAPI::TilePosition mainTile = the.bases.myStart()->getTilePosition();
-
-        int distToMain = tile.getDistance(mainTile);
-        //linesToDraw.push_back(MapLine{48 * 32, 64 * 32, tile.x * 23, tile.y * 32, BWAPI::Colors::Red});
-        //boxesToDraw.push_back(MapBox{tile.x * 32, tile.y * 32, 32, 32, BWAPI::Colors::Red});
-
-        // If we ended up too close to main
-        if (b.macroLocation == MacroLocation::Expo && (!tile.isValid() || distToMain < 20 * 32)) {
-            Base* expo = the.map.nextExpansion(false, true, true);
-
-            if (expo) {
-
-                // Try to force expo tile logic
-                BWAPI::TilePosition expoTile = expo->getTilePosition();
-                BWAPI::TilePosition mainTile = the.bases.myStart()->getTilePosition();
-
-                distToMain = expoTile.getDistance(mainTile);
-
-                // if this "expo" is STILL basically our main, reject it
-                if (!tile.isValid() || distToMain < 20 * 32) {
-                    // Force natural location
-                    Base* natural = the.bases.myNatural();
-                    if (natural) {
-                        expoTile = natural->getFrontTile();
-                    }
-                    else {
-                        return findAnyLocation(b, 0);
-                    }
-                }
-
-                BWAPI::TilePosition pos = BWAPI::TilePosition(expoTile);
-                return findAnyLocation(Building(b.type, pos), 0);
-            }
-        }
-
+    else if (b.type == BWAPI::UnitTypes::Protoss_Pylon) {
+        BWAPI::TilePosition tile = findPylonlessBaseLocation(b);
     }
     /* CODE ADDED */
     else if (b.type == BWAPI::UnitTypes::Protoss_Forge && b.macroLocation == MacroLocation::Front) {
@@ -938,22 +897,50 @@ bool BuildingPlacer::wallsOnRight(const BWAPI::TilePosition& tile, BWAPI::UnitTy
 }
 
 
-/* END OF CODE ADDED */
-
-BWAPI::TilePosition BuildingPlacer::findAnyLocation(const Building & b, int extraSpace) const
+BWAPI::TilePosition BuildingPlacer::findAnyLocation(const Building & b, int extraSpace)
 {
     // Tiles sorted in order of closeness to the location.
     const std::vector<BWAPI::TilePosition> & closest = the.map.getClosestTilesTo(b.desiredPosition);
+
+    BWAPI::TilePosition tileCandidate = BWAPI::TilePositions::None;
 
     for (const BWAPI::TilePosition & tile : closest)
     {
         if (canBuildWithSpace(tile, b, extraSpace))
         {
-            return tile;
+            tileCandidate = tile;
+            break;
         }
     }
 
-    return BWAPI::TilePositions::None;
+    /* CODE ADDED */
+    // Should hopefully fix the issues with pylon @ expo
+    if (b.type == BWAPI::UnitTypes::Protoss_Pylon && b.macroLocation == MacroLocation::Expo) {
+
+        BWAPI::TilePosition mainTile = the.bases.myStart()->getTilePosition();
+
+        int tooCloseDist = 15 * 32;
+        //circlesToDraw.push_back(MapCircle{ mainTile.x * 32, mainTile.y * 32, tooCloseDist, BWAPI::Colors::Red });
+        //boxesToDraw.push_back(MapBox{ tileCandidate.x * 32, tileCandidate.y * 32, 32, 32, BWAPI::Colors::Yellow });
+
+
+        bool badPlacement = !tileCandidate.isValid() || BWAPI::Position(tileCandidate).getDistance(BWAPI::Position(mainTile)) < tooCloseDist;
+
+        // If normal placement is fine, just use it
+        if (!badPlacement) {
+            return tileCandidate;
+        }
+
+        // fallback: natural front
+        Base* natural = the.bases.myNatural();
+        if (natural) {
+            BWAPI::TilePosition fallback = findAnyLocation(Building(b.type, natural->getFrontTile()), 0);
+            if (fallback.isValid())
+                return fallback;
+        }
+    }
+
+    return tileCandidate;
 }
 
 // Mineral patches in range of the position. Calculations in pixels.
@@ -1037,6 +1024,10 @@ void BuildingPlacer::drawReservedTiles() const
 
     for (auto b : linesToDraw) {
         BWAPI::Broodwar->drawLineMap(b.x1, b.y1, b.x2, b.y2, b.c);
+    }
+
+    for (auto b : circlesToDraw) {
+        BWAPI::Broodwar->drawCircleMap(b.cx, b.cy, b.r, b.c);
     }
     if (!Config::Debug::DrawReservedBuildingTiles)
     {

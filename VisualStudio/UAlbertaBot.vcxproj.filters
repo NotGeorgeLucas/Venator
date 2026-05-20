@@ -189,6 +189,7 @@
     <ClCompile Include="..\Source\GridTasks.cpp" />
     <ClCompile Include="..\Source\GridSafePath.cpp" />
     <ClCompile Include="..\Source\SkillOffSunk.cpp" />
+    <ClCompile Include="..\Source\MicroArbiters.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Source\CombatCommander.h">
@@ -345,5 +346,6 @@
     <ClInclude Include="..\Source\GridSafePath.h" />
     <ClInclude Include="..\Source\DistanceMap.hpp" />
     <ClInclude Include="..\Source\SkillOffSunk.h" />
+    <ClInclude Include="..\Source\MicroArbiters.h" />
   </ItemGroup>
 </Project>

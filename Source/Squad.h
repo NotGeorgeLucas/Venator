@@ -20,6 +20,7 @@
 #include "MicroScourge.h"
 #include "MicroTanks.h"
 #include "MicroTransports.h"
+#include "MicroArbiters.h"
 
 namespace UAlbertaBot
 {
@@ -66,6 +67,7 @@ class Squad
     MicroScourge        _microScourge;
     MicroTanks			_microTanks;
     MicroTransports		_microTransports;
+    MicroArbiters        _microArbiters;
 
     std::map<BWAPI::Unit, bool> _nearEnemy;
 

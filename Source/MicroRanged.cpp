@@ -74,7 +74,7 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
             }
         }
 
-        if (target->getType() == BWAPI::UnitTypes::Protoss_Dragoon) {
+        if (target->getType() == BWAPI::UnitTypes::Protoss_Dragoon || target->getType() == BWAPI::UnitTypes::Terran_Goliath) {
             cInfo.threats.insert(target);
             BWAPI::TilePosition tp(target->getPosition());
 
@@ -381,64 +381,43 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
 
     bool foundTile = false;
 
-    if (cInfo.shouldGoHighground) {
+    // Experimental branch turned off
+    if (false && cInfo.shouldGoHighground && cInfo.threats.size() > 0) {
 
         BWAPI::TilePosition cOrigin(carrier->getPosition());
 
-        BWAPI::Position threatDir = averageNormalizedVector(cInfo.threats, BWAPI::Position(cOrigin));
+        BWAPI::Unit closestThreat = nullptr;
+        int closestDist = INT_MAX;
+        
+        for (BWAPI::Unit u : cInfo.threats) {
+            int dist = u->getPosition().getApproxDistance(carrier->getPosition());
 
-        BWAPI::TilePosition bestTile = BWAPI::TilePositions::Invalid;
-
-        int bestScore = INT_MIN;
-
-
-        for (int dx = -5; dx < 6; dx++) {
-            for (int dy = -5; dy < 6; dy++) {
-                BWAPI::TilePosition checkedTile = cOrigin + BWAPI::TilePosition(dx, dy);
-
-                if (BWAPI::Broodwar->getGroundHeight(checkedTile) > cInfo.maxThreatElevation && angleDifferenceGreaterThan(threatDir, BWAPI::Position(checkedTile - cOrigin), 60.0)) {
-                    BWAPI::Unitset unitsFromPos = BWAPI::Broodwar->getUnitsInRadius(BWAPI::Position(checkedTile), 8 * 32);
-
-                    BWAPI::Unitset threatsFromPos;
-
-                    for (auto u : unitsFromPos) {
-                        if (!u || !u->exists() || !u->isVisible()) continue;
-                        if (u->getPlayer() != BWAPI::Broodwar->enemy()) continue;
-
-                        auto type = u->getType();
-                        if (type == BWAPI::UnitTypes::Protoss_Dragoon) {
-                            threatsFromPos.insert(u);
-                        }
-
-                    }
-
-                    int score = 0;
-
-                    // Highly prefer higher ground
-                    score += 50 * BWAPI::Broodwar->getGroundHeight(checkedTile);
-
-                    // The more enemies the better, but we can't sacrifice position for that
-                    if (threatsFromPos .size() > 3) {
-                        score -= 10 * threatsFromPos.size();
-                    }
-                    else {
-                        score += 100;
-                    }
-
-                    // Tie-breaker: distance
-                    score -= carrier->getPosition().getApproxDistance(BWAPI::Position(checkedTile));
-
-                    if (score > bestScore) {
-                        bestTile = checkedTile;
-                        bestScore = score;
-                        foundTile = true;
-                    }
-                }
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestThreat = u;
             }
         }
-        moveTo = BWAPI::Position(bestTile);
+
+
+        BWAPI::Position threatDir = averageNormalizedVector(cInfo.threats, BWAPI::Position(cOrigin));
+        BWAPI::Position fleeDir = threatDir * -1;
+
+
+        // Special case: too close/surrounded
+        if (closestThreat->getDistance(carrier) <= 48) {
+            fleeDir = the.bases.myMain()->getPosition() - carrier->getPosition();
+
+            double len = std::sqrt(fleeDir.x * fleeDir.x + fleeDir.y * fleeDir.y);
+
+            fleeDir /= len;
+                
+        }
+
+
+        moveTo = closestThreat->getPosition() + (fleeDir * 9.5 * 32);
+        
     }
-    if (!cInfo.shouldGoHighground || !foundTile) {
+    else {
 
         std::vector<std::pair<BWAPI::Unit, int>> nearbyTargets;
 
@@ -488,8 +467,7 @@ bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target) {
 
     return !lastTarget ||
         !lastTarget->exists() ||
-        (lastTarget->getType() != target->getType() &&
-            lastTarget->getPosition().getDistance(target->getPosition()) <= 2 * 32);
+        getAttackPriority(unit, target) > getAttackPriority(unit, lastTarget);
 }
 
 
@@ -504,6 +482,13 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
 
     for (BWAPI::Unit target : targets)
     {
+
+        /* CODE ADDED */
+        // There's no point to attack interceptors as a carrier
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && target->getType() == BWAPI::UnitTypes::Protoss_Interceptor) {
+            continue;
+        }
+
         // Skip targets under dark swarm that we can't hit.
         if (target->isUnderDarkSwarm() && !target->getType().isBuilding() && !goodUnderDarkSwarm(rangedUnit->getType()))
         {

@@ -198,6 +198,41 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     }
                 }
 
+                auto pathSafe = [&](const BWAPI::Position& from, const BWAPI::Position& to) -> bool
+                    {
+                        if (!from.isValid() || !to.isValid())
+                            return false;
+
+                        for (auto& threat : threatVector) {
+
+                            if (!threat || !threat->exists())
+                                continue;
+
+                            int range = UnitUtil::GetAttackRange(threat, airUnit);
+
+                            BWAPI::Position tp = threat->getPosition();
+
+                            // destination itself unsafe
+                            if (to.getDistance(tp) <= range)
+                                return false;
+
+                            // path intersects threat zone
+                            if (lineIntersectsCircle(
+                                from.x,
+                                from.y,
+                                to.x,
+                                to.y,
+                                tp.x,
+                                tp.y,
+                                range))
+                            {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    };
+
 
                 bool inDanger = false;
                 BWAPI::Position fleeVector(0, 0);
@@ -228,16 +263,74 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
                 // We want to attack targets if we can get to them without getting in range of a threat
                 bool targetSafe = true;
+                BWAPI::Position safeAttackPoint = BWAPI::Positions::Invalid;
                 for (auto& threat : threatVector) {
                     int threatRange = UnitUtil::GetAttackRange(threat, airUnit);
                     int distThreatToTarget = threat->getDistance(target);
 
                     if (distThreatToTarget <= threatRange) {
-                        targetSafe = false;
-                        break;
+
+
+                        int attackRange = ((int)((double)UnitUtil::GetAttackRange(airUnit, target)) * 0.8);
+
+                        std::vector<BWAPI::Position> firingPositions;
+                        std::vector<BWAPI::Position> safeFiringPositions;
+
+                        for (int angle = 0; angle < 360; angle += 20) {
+                            double rad = angle * M_PI / 180.0;
+
+                            int x = target->getPosition().x + int(cos(rad) * (attackRange - 8));
+                            int y = target->getPosition().y + int(sin(rad) * (attackRange - 8));
+
+                            BWAPI::Position p(x, y);
+
+                            if (p.isValid())
+                                firingPositions.push_back(p);
+                        }
+
+                        for (BWAPI::Position p : firingPositions) {
+                            bool isSafe = true;
+                            for (auto& threat : threatVector) {
+                                int range = UnitUtil::GetAttackRange(threat, airUnit);
+
+                                if (p.getDistance(threat->getPosition()) <= range) {
+                                    isSafe = false;
+                                    break;
+                                }
+                            }
+
+                            if (isSafe) {
+                                safeFiringPositions.push_back(p);
+                            }
+                        }
+
+                        if (safeFiringPositions.size() == 0) {
+                            targetSafe = false;
+                            break;
+                        }
+                        else {
+                            BWAPI::Position bestPoint = BWAPI::Positions::Invalid;
+                            double bestDist = DBL_MAX;
+
+                            for (auto& p : safeFiringPositions) {
+
+
+                                if (!pathSafe(airUnit->getPosition(), p))
+                                    continue;
+
+                                double dist = airUnit->getPosition().getApproxDistance(p);
+
+                                if (dist < bestDist) {
+                                    bestDist = dist;
+                                    bestPoint = p;
+                                }
+                            }
+
+                            safeAttackPoint = bestPoint;
+                        }
+
                     }
                 }
-
 
                 // Flee if we're being hit
                 if (inDanger) {
@@ -258,8 +351,20 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     continue;
                 }
 
+                int attackRange = UnitUtil::GetAttackRange(airUnit, target);
+
+                bool atSafeAttackPoint = airUnit->getPosition().getApproxDistance(safeAttackPoint) < 24;
+
+                bool canHitTarget = airUnit->getDistance(target) <= attackRange;
+
+                if (atSafeAttackPoint && canHitTarget) {
+                    the.micro.AttackUnit(airUnit, target);
+                    continue;
+                }
+
                 BWAPI::Position start = airUnit->getPosition();
                 BWAPI::Position end = target->getPosition();
+                if (safeAttackPoint.isValid()) { end = safeAttackPoint; }
 
                 bool safeToMove = true;
 
@@ -278,6 +383,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                 else {
                     BWAPI::Position start = airUnit->getPosition();
                     BWAPI::Position end = target->getPosition();
+                    if (safeAttackPoint.isValid()) { end = safeAttackPoint; }
 
                     BWAPI::Position dir = end - start;
                     BWAPI::Position midpoint = start + dir / 2;

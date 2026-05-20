@@ -963,15 +963,17 @@ void Micro::CarrierAttackMove(BWAPI::Unit carrier, BWAPI::Unit target, BWAPI::Po
     if (!carrier || !carrier->exists() || !target || !target->exists())
         return;
 
+    if (carrier->getLastCommandFrame() >= the.now()) {
+        return;
+    }
+
     int frame = the.now();
 
     // Every few frames, re-issue attack to keep targeting
-    if (frame % 12 == 0)
-    {
+    if (frame % 12 == 0 || !carrier->isAttacking()) {
         carrier->attack(target);
     }
-    else
-    {
+    else {
         carrier->move(movePos);
     }
 }

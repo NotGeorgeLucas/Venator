@@ -158,6 +158,7 @@
     <ClCompile Include="..\Source\MapPartitions.cpp" />
     <ClCompile Include="..\Source\MapTools.cpp" />
     <ClCompile Include="..\Source\MicroAirToAir.cpp" />
+    <ClCompile Include="..\Source\MicroArbiters.cpp" />
     <ClCompile Include="..\Source\MicroDefilers.cpp" />
     <ClCompile Include="..\Source\MicroDetectors.cpp" />
     <ClCompile Include="..\Source\MicroHighTemplar.cpp" />
@@ -252,6 +253,7 @@
     <ClInclude Include="..\Source\MapPartitions.h" />
     <ClInclude Include="..\Source\MapTools.h" />
     <ClInclude Include="..\Source\MicroAirToAir.h" />
+    <ClInclude Include="..\Source\MicroArbiters.h" />
     <ClInclude Include="..\Source\MicroDefilers.h" />
     <ClInclude Include="..\Source\MicroDetectors.h" />
     <ClInclude Include="..\Source\MicroHighTemplar.h" />
