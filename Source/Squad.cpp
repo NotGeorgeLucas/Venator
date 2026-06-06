@@ -333,7 +333,10 @@ void Squad::clusterCombat(const UnitCluster & cluster)
         _microScourge.execute(cluster);
         _microTanks.execute(cluster);
 
+        _microArbiters.findBestSupportClusters(the.ops.getFriendlyClusters());
         _microArbiters.execute(cluster);
+        
+        _microDarkArchon.execute(cluster);
 
         _microLurkers.setTactic(_lurkerTactic);
         _microLurkers.execute(cluster);
@@ -359,6 +362,7 @@ void Squad::clusterCombat(const UnitCluster & cluster)
         _microTanks.regroup(_regroupPosition, cluster);
 
         _microArbiters.regroup(_regroupPosition, cluster);
+        _microDarkArchon.regroup(_regroupPosition, cluster);
 
         // Aggressive lurkers do not regroup, but always execute their order.
         if (_lurkerTactic == LurkerTactic::Aggressive)
@@ -498,13 +502,22 @@ bool Squad::canReachMineralLine(const UnitCluster & cluster) const
 // Parameter lazy defaults to true. If true, use MoveNear() which reduces APM and accuracy.
 void Squad::moveCluster(const UnitCluster & cluster, const BWAPI::Position & destination, bool lazy)
 {
+
+    /* CODE ADDED */
+    // Override the move logic for arbiters
+    _microArbiters.findBestSupportClusters(_clusters);
+    _microArbiters.execute(cluster);
+
+
     for (BWAPI::Unit unit : cluster.units)
     {
         // Only move units which don't arrange their own movement.
         // Queens do their own movement, but are not clustered and won't turn up here.
         if (unit->getType() != BWAPI::UnitTypes::Terran_Medic &&
+            unit->getType() != BWAPI::UnitTypes::Protoss_Arbiter &&
             !_microDefilers.getUnits().contains(unit))      // defilers plus defiler food
         {
+            if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() == BWAPI::Races::Zerg) continue;
             if (!UnitUtil::MobilizeUnit(unit))
             {
                 if (lazy)
@@ -542,13 +555,21 @@ void Squad::attackMoveCluster(const UnitCluster & cluster, const BWAPI::Position
 // Safely move the cluster toward the given position.
 void Squad::safeMoveCluster(const UnitCluster & cluster, const BWAPI::Position & destination)
 {
+
+    /* CODE ADDED */
+    // Override the move logic for arbiters
+    _microArbiters.findBestSupportClusters(_clusters);
+    _microArbiters.execute(cluster);
+
     for (BWAPI::Unit unit : cluster.units)
     {
         // Only move units which don't arrange their own movement.
         // Queens do their own movement, but are not clustered and won't turn up here.
         if (unit->getType() != BWAPI::UnitTypes::Terran_Medic &&
+            unit->getType() != BWAPI::UnitTypes::Protoss_Arbiter &&
             !_microDefilers.getUnits().contains(unit))      // defilers plus defiler food
         {
+            if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() == BWAPI::Races::Zerg) continue;
             if (!UnitUtil::MobilizeUnit(unit))
             {
 				if (_order.getBase())
@@ -586,7 +607,9 @@ bool Squad::unreadyUnit(BWAPI::Unit u)
 
         // Always rebuild interceptors when possible.
         if (u->canTrain(BWAPI::UnitTypes::Protoss_Interceptor) && !u->isTraining()) {
-            the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
+            if (the.self()->minerals() >= std::min(50 + 25 * the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier), 200)) {
+                the.micro.Make(u, BWAPI::UnitTypes::Protoss_Interceptor);
+            }
         }
 
         // ONLY treat carrier as "unready" before combat,
@@ -717,6 +740,7 @@ void Squad::setOrderForMicroManagers()
     _microTransports.setOrder(_order);
 
     _microArbiters.setOrder(_order);
+    _microDarkArchon.setOrder(_order);
 }
 
 void Squad::addUnitsToMicroManagers()
@@ -740,6 +764,7 @@ void Squad::addUnitsToMicroManagers()
     /* CODE ADDED */
     // More micro
     BWAPI::Unitset arbiterUnits;
+    BWAPI::Unitset darkArchonUnits;
 
     // We will assign zerglings as defiler food. The defiler micro manager will control them.
     int defilerFoodWanted = 0;
@@ -823,6 +848,9 @@ void Squad::addUnitsToMicroManagers()
             else if (unit->getType() == BWAPI::UnitTypes::Protoss_Arbiter) {
                 arbiterUnits.insert(unit);
             }
+            else if (unit->getType() == BWAPI::UnitTypes::Protoss_Dark_Archon) {
+                darkArchonUnits.insert(unit);
+            }
             // NOTE This excludes spellcasters (except arbiters, which have a regular weapon too).
             else if (unit->getType().groundWeapon().maxRange() > 32 ||
                 unit->getType() == BWAPI::UnitTypes::Protoss_Reaver ||
@@ -882,6 +910,7 @@ void Squad::addUnitsToMicroManagers()
     _microTransports.setUnits(transportUnits);
 
     _microArbiters.setUnits(arbiterUnits);
+    _microDarkArchon.setUnits(darkArchonUnits);
 }
 
 // Calculates whether to regroup, aka retreat. Does combat sim if necessary.
@@ -919,10 +948,17 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
 
     BWAPI::Unit vanguard = unitClosestToTarget(cluster.units);  // cluster vanguard (not squad vanguard)
 
-    if (!vanguard)
+    /* CODE ADDED */
+    // To hell with this rule (for protoss airlines) genuinely I fight against this rule more than I fight the enemy bot
+    if (!vanguard && (!cluster.air || the.selfRace() != BWAPI::Races::Protoss))
     {
         _regroupStatus = yellow + std::string("No vanguard");
         return true;
+    }
+
+    // Get a new "vanguard" if we need
+    if (!vanguard) {
+        vanguard = cluster.units.getClosestUnit();
     }
 
     const BWAPI::Position lastStand = finalRegroupPosition(cluster.units);
@@ -968,8 +1004,16 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     /* CODE ADDED */
 
     // AirToAir logic
-    if (cluster.air && cluster.groundDPF == 0 && cluster.airDPF >= 0) {
+    bool isAirToAirOnly = true;
+    for (auto u : cluster.units) {
+        if (!u->isFlying() || !UnitUtil::CanAttackAir(u) || UnitUtil::CanAttackGround(u)) {
+            isAirToAirOnly = false;
+            break;
+        }
+    }
+    if (isAirToAirOnly) {
         bool hasAirThreat = false;
+        bool hasAirUnits = false;
         int enemyCount = 0;
         for (const auto& kv : InformationManager::Instance().getUnitData(BWAPI::Broodwar->enemy()).getUnits()) {
             const UnitInfo& ui = kv.second;
@@ -980,7 +1024,9 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
                 enemyCount++;
                 if (ui.type.airWeapon() != BWAPI::WeaponTypes::None) {
                     hasAirThreat = true;
-                    break;
+                }
+                if (ui.type.isFlyer() && ui.type.airWeapon() != BWAPI::WeaponTypes::None) {
+                    hasAirUnits = true;
                 }
             }
         }
@@ -988,6 +1034,12 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
         if (!hasAirThreat && enemyCount > 0) {
             _regroupStatus = green + std::string("Free airspace");
             return false; // never regroup
+        }
+
+
+        if (!hasAirUnits && enemyCount > 0) {
+            _regroupStatus = green + std::string("Letting the micro dodge");
+            return false; // Pray the micro script can take care of itself
         }
     }
 
@@ -1228,7 +1280,7 @@ BWAPI::Position Squad::finalRegroupPosition(BWAPI::Unitset squad) const
 
     // If the natural has been taken, retreat there instead.
     Base * natural = the.bases.myNatural();
-    if (natural && natural->getOwner() == the.self()
+    if (natural && natural->getOwner() == the.self() && natural->getDepot() && !natural->getDepot()->isBeingConstructed()
         && !(isCarrierSquad && isWeakCarrierSquad))
     {
         base = natural;
@@ -1438,6 +1490,7 @@ BWAPI::Unit Squad::unitClosestToPosition(const BWAPI::Position & pos, const BWAP
             !unit->getPosition().isValid() ||       // includes units loaded into bunkers or transports
             unit->getType() == BWAPI::UnitTypes::Terran_Medic ||
             unit->getType() == BWAPI::UnitTypes::Protoss_High_Templar ||
+            unit->getType() == BWAPI::UnitTypes::Protoss_Corsair ||
             unit->getType() == BWAPI::UnitTypes::Protoss_Dark_Archon ||
             unit->getType() == BWAPI::UnitTypes::Zerg_Defiler ||
             unit->getType() == BWAPI::UnitTypes::Zerg_Queen)

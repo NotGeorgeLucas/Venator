@@ -172,6 +172,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     bool enemyHasArmory = im.getNumUnits(BWAPI::UnitTypes::Terran_Armory, the.enemy()) > 0;
 
     int enemyHydraCount = im.getNumUnits(BWAPI::UnitTypes::Zerg_Hydralisk, the.enemy());
+    int enemyMutaCount = im.getNumUnits(BWAPI::UnitTypes::Zerg_Mutalisk, the.enemy());
     int enemyZerglingCount = im.getNumUnits(BWAPI::UnitTypes::Zerg_Zergling, the.enemy());
 
     int enemyDragoonCount = im.getNumUnits(BWAPI::UnitTypes::Protoss_Dragoon, the.enemy());
@@ -180,6 +181,15 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
 
     if (the.enemyRace() == BWAPI::Races::Zerg && numStargate >= 1) {
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, std::min(numCorsairs + 1, 2)));
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Fleet_Beacon, 1));
+        goal.push_back(MetaPair(BWAPI::TechTypes::Disruption_Web, 1));
+    }
+
+    if (the.enemyRace() == BWAPI::Races::Zerg && numArchives >= 1 && enemyMutaCount >= 4) {
+
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dark_Templar, numDarkTemplar + 2));
+        goal.push_back(MetaPair(BWAPI::TechTypes::Maelstrom, 1));
+
     }
 
     if (numStargate >= 1 && _openingGroup != "carriers") {
@@ -201,7 +211,8 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
         /* CODE ADDED */
         if (hasCarrierCondition) {
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 1));
-            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Weapons, 2));
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Weapons, 1));
         }
         else if (numStargate >= 1) {
 
@@ -296,9 +307,10 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
         _openingGroup = "dragoons";
     }
     /* CODE ADDED */
+    // Carriers and Arbiters opening groups
     else if (_openingGroup == "carriers")
     {
-        int maxCarriers = 17;
+        const int maxCarriers = 17;
 
         // Start expanding if we have enough carriers to make a solid defense
         if (numCarriers >= 3) {
@@ -314,9 +326,15 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
         if (hasCarrierCondition) {
             goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
 
+            if (BWAPI::Broodwar->self()->hasResearched(BWAPI::TechTypes::Disruption_Web)) {
+                goal.push_back(MetaPair(BWAPI::UpgradeTypes::Argus_Jewel, 1));
+            }
+
             if (hasArbiterCondition) {
                 // Leave room for one arbiter if we're that late
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, std::min(maxCarriers, numCarriers + std::max(3, 2 * numNexusCompleted)) - 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, 1));
+                goal.push_back(MetaPair(BWAPI::TechTypes::Disruption_Web, 1));
             }
             else {
                 int carrierTarget = std::min(maxCarriers, numCarriers + std::max(2, numNexusCompleted));
@@ -325,6 +343,10 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
                     carrierTarget = std::min(carrierTarget, 8); // don't overcommit early
                 }
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, carrierTarget));
+
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, 3));
+                goal.push_back(MetaPair(BWAPI::TechTypes::Disruption_Web, 1));
+
             }
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + (int)ceil(numNexusCompleted / 2.0)));
 
@@ -350,6 +372,9 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
         if (the.enemyRace() == BWAPI::Races::Terran) {
 
             if (enemyGoliathCount + enemyWraithCount < 10) {
+                if (numArchives >= 1) {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dark_Templar, numDarkTemplar + 2));
+                }
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + numGateways));
             }
             else {
@@ -357,13 +382,12 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
                 goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
 
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + std::max(1, numGateways - 4)));
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 4));
+                if (numArchives >= 1) {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dark_Templar, numDarkTemplar + 3));
+                }
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 3));
 
             }
-            
-
-
-            
             
         }
         else if (the.enemyRace() == BWAPI::Races::Zerg) {
@@ -415,16 +439,94 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             // try to go for arbiters lategame
             if (hasArbiterCondition) {
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter, numArbiter + 1));
+                goal.push_back(MetaPair(BWAPI::TechTypes::Stasis_Field, 1));
             }
             else {
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Citadel_of_Adun, 1));
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Templar_Archives, 1));
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal, 1));
+                goal.push_back(MetaPair(BWAPI::TechTypes::Stasis_Field, 1));
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter, numArbiter + 2));
             }
         }
 
         goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Armor, 1)); // Casual point into air armor
+        if (im.getNumUnits(BWAPI::UnitTypes::Terran_Marine, the.enemy()) >= 20) {
+            int armorLevel = the.self()->getUpgradeLevel(BWAPI::UpgradeTypes::Protoss_Air_Armor);
+            if (armorLevel < 3) {
+                goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Armor, armorLevel + 1)); // More armor against marines
+            }
+        }
+    }
+    else if (_openingGroup == "arbiters") {
+        int maxArbiters = 8;
+
+        
+        if (numNexusAll < 2) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Nexus, numNexusAll + 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Probe, numProbes + 4));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Pylon, numPylons + 1));
+        }
+
+        // If we are actually committing to Arbiters, we need gas scaling or we are just pretending
+        if (hasArbiterCondition) {
+            goal.push_back(MetaPair(BWAPI::TechTypes::Stasis_Field, 1));
+
+            // Core Arbiter scaling logic
+            int arbiterTarget = std::min(maxArbiters, numArbiter + std::max(1, numNexusCompleted / 2));
+
+            // Don't overbuild if enemy is Protoss early, because Dragoon spam says "no fun allowed"
+            if (the.enemyRace() == BWAPI::Races::Protoss) {
+                arbiterTarget = std::min(arbiterTarget, 3);
+            }
+
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter, arbiterTarget));
+
+            // Standard support Stargate tech line for transition stability
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + 1));
+
+        }
+        else {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Citadel_of_Adun, 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Templar_Archives, 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal, 1));
+
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, 1));
+
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Arbiter, 1));
+        }
+
+        // Ground buffer
+        if (the.enemyRace() == BWAPI::Races::Zerg) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 4));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, numHighTemplar + 2));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 3));
+        }
+        else if (the.enemyRace() == BWAPI::Races::Terran) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 5));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 3));
+        }
+        else {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + 3));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 4));
+        }
+        
+
+        // Always get range
+        goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
+
+        // Arbiter support upgrades
+        if (numArbiter >= 2) {
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Armor, 1));
+        }
+
+        // Lategame: Carriers
+        if (numArbiter >= 3) {
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Fleet_Beacon, 1));
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Carrier_Capacity, 1));
+
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, numCarriers + 2));
+        }
     }
     else
     {
@@ -437,8 +539,8 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     {
         if (hasStargate)
         {
-            if (numCorsairs < 6 && self->deadUnitCount(BWAPI::UnitTypes::Protoss_Corsair) == 0 ||
-                numCorsairs < 9 && enemies.count(BWAPI::UnitTypes::Zerg_Mutalisk > numCorsairs))
+            if ((numCorsairs < 6 && self->deadUnitCount(BWAPI::UnitTypes::Protoss_Corsair) == 0) ||
+                (numCorsairs < 9 && enemies.count(BWAPI::UnitTypes::Zerg_Mutalisk) > numCorsairs))
             {
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, numCorsairs + 1));
             }
@@ -1178,7 +1280,8 @@ bool StrategyManager::dropIsPlanned() const
     // Otherwise plan drop if the opening says so, or if the map has islands to take.
     return
         getOpeningGroup() == "drop" ||
-        Config::Macro::ExpandToIslands && the.bases.hasIslandBases();
+        getOpeningGroup() == "DTDropArbiters" ||
+        (Config::Macro::ExpandToIslands && the.bases.hasIslandBases());
 }
 
 // Whether we have the tech and transport to drop.

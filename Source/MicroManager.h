@@ -84,7 +84,7 @@ public:
     void				setUnits(const BWAPI::Unitset & u);
     void				setOrder(const SquadOrder & inputOrder);
     void				execute(const UnitCluster & cluster);
-    void				regroup(const BWAPI::Position & regroupPosition, const UnitCluster & cluster) const;
+    virtual void        regroup(const BWAPI::Position & regroupPosition, const UnitCluster & cluster) const;
 
     bool                anyUnderThreat(const BWAPI::Unitset & units) const;
 

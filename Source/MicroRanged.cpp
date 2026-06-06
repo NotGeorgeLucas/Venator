@@ -489,6 +489,15 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
             continue;
         }
 
+
+        /* CODE ADDED */
+        // A scout should not concern itself with the recon at our base, just go straight for their base
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Scout 
+            && target->getType().isWorker() 
+            && target->getPosition().getApproxDistance(the.bases.myStart()->getPosition()) <= 8 * 32) {
+            continue;
+        }
+
         // Skip targets under dark swarm that we can't hit.
         if (target->isUnderDarkSwarm() && !target->getType().isBuilding() && !goodUnderDarkSwarm(rangedUnit->getType()))
         {
@@ -680,6 +689,59 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
     {
         // Can't target it.
         return 0;
+    }
+
+
+
+
+    /* CODE ADDED */
+    // Scout priorities go here
+    if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Scout) {
+        // This is where the fun begins!
+
+
+        if (!target->isFlying() && targetType.maxHitPoints() >= 500 && target->getHitPoints() >= 150) {
+            // Scouts have low ground damage. There is no way we kill something on the ground with that much health
+            return 1;
+        }
+
+        // Flying buildings aren't worth it
+        if (target->getType().isFlyingBuilding()) {
+            return 2;
+        }
+        
+
+        // Harass workers, especially if they're in the middle of something
+        if (targetType.isWorker()) {
+            if (target->isRepairing() || target->isConstructing()) {
+                return 12;
+            }
+            return 10;
+        }
+
+
+        // Unfinished static defenses are a good target
+        if (targetType.isBuilding() && target->isBeingConstructed()) {
+            if (UnitUtil::CanAttackAir(target)) {
+                return 11;
+            }
+        }
+        
+        // Scouts are a part of DTDrop strat so this could be useful
+        if (targetType.isDetector()) {
+            return 10;
+        }
+
+        // Harass things that can't shoot back at us
+        if (UnitUtil::CanAttackGround(target) && !UnitUtil::CanAttackAir(target)) {
+            return 9;
+        }
+    }
+
+    if (target->isStasised() || target->isMaelstrommed() || target->isUnderDisruptionWeb()) {
+        if (UnitUtil::CanAttack(rangedUnit, target)) {
+            return 1;
+        }
     }
 
     // A carrier should not target an enemy interceptor. It's too hard to hit.

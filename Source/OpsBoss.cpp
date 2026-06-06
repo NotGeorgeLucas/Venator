@@ -255,6 +255,7 @@ void OpsBoss::update()
     if (phase == 0)
     {
         cluster(the.enemy(), enemyClusters);
+        cluster(the.self(), friendlyClusters);
     }
 
     drawClusters();

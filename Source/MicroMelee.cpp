@@ -39,6 +39,84 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
         }
     }
 
+
+    /* CODE ADDED */
+    // Dark Archon merge control
+
+    int daCount = the.my.completed.count(BWAPI::UnitTypes::Protoss_Dark_Archon);
+    BWAPI::Unitset daMergeGroup;
+    BWAPI::Unitset daBusy;
+
+    auto isNearEnemy = [&](BWAPI::Unit u, int radius) -> bool {
+        for (BWAPI::Unit t : targets) {
+            if (!t || !t->exists()) continue;
+            if (t->getPlayer() == BWAPI::Broodwar->self()) continue;
+            if (u->getDistance(t) <= radius) return true;
+        }
+        return false;
+        };
+
+
+    // tech gate + hard cap
+    bool allowDA = (BWAPI::Broodwar->self()->hasResearched(BWAPI::TechTypes::Mind_Control) || BWAPI::Broodwar->self()->hasResearched(BWAPI::TechTypes::Maelstrom)) && daCount < 2;
+
+    const BWAPI::Position daGatherPoint = the.bases.myMain()->getPosition() - BWAPI::Position(32, 32);
+
+    if (allowDA) {
+        for (BWAPI::Unit u : meleeUnits) {
+            if (!u || !u->exists()) continue;
+
+            if (u->getType() == BWAPI::UnitTypes::Protoss_Dark_Templar) {
+                const int framesSince = BWAPI::Broodwar->getFrameCount() - u->getLastCommandFrame();
+                const bool longEnough = framesSince >= 12;
+
+                if (u->getOrder() == BWAPI::Orders::DarkArchonMeld) {
+                    if (framesSince > 5 * 24) {
+                        the.micro.Move(u, daGatherPoint);
+                    }
+                }
+                else if (u->getLastCommand().getType() == BWAPI::UnitCommandTypes::Use_Tech_Unit && !longEnough) {
+                    // StarCraft latency moment
+                }
+                else if (u->getOrder() == BWAPI::Orders::PlayerGuard && !isNearEnemy(u, 8 * 32)) {
+                    daMergeGroup.insert(u);
+                }
+                else {
+                    if (u->getDistance(daGatherPoint) >= 3 * 32) {
+                        the.micro.Move(u, daGatherPoint);
+                    }
+                    else {
+                        the.micro.Stop(u);
+                    }
+                }
+            }
+        }
+
+        // pick closest pair like HT code
+        int closestDist = MAX_DISTANCE;
+        BWAPI::Unit a = nullptr;
+        BWAPI::Unit b = nullptr;
+
+        for (BWAPI::Unit u1 : daMergeGroup) {
+            for (BWAPI::Unit u2 : daMergeGroup) {
+                if (u1 == u2) break;
+
+                int dist = u1->getDistance(u2);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    a = u1;
+                    b = u2;
+                }
+            }
+        }
+
+        if (a && b) {
+            daBusy.insert(a);
+            daBusy.insert(b);
+            (void)the.micro.MergeArchon(a, b);
+        }
+    }
+
     /* CODE ADDED */
     int zealotNum = 0;
     for (BWAPI::Unit u : meleeUnits) {
@@ -81,6 +159,11 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
         // Try to avoid being hit by an undetected enemy dark templar.
         if (the.micro.fleeDT(meleeUnit))
         {
+            continue;
+        }
+
+        // Don't touch the merging DTs
+        if (meleeUnit->getType() == BWAPI::UnitTypes::Protoss_Dark_Templar && daBusy.find(meleeUnit) != daBusy.end()) {
             continue;
         }
 
@@ -291,6 +374,20 @@ int MicroMelee::getAttackPriority(BWAPI::Unit attacker, BWAPI::Unit target) cons
     if (attacker->getType() == BWAPI::UnitTypes::Protoss_Zealot) {
         if (targetType == BWAPI::UnitTypes::Terran_Siege_Tank_Siege_Mode) {
             return 11;
+        }
+    }
+
+    /* CODE ADDED */
+    // Help nearby corsairs with static defenses and cloaked allies with detectors
+    if (targetType.isBuilding() && UnitUtil::CanAttackAir(target)) {
+        if (!attacker->getUnitsInRadius(8 * 32, BWAPI::Filter::IsAlly && !BWAPI::Filter::IsNeutral && BWAPI::Filter::GetType == BWAPI::UnitTypes::Protoss_Corsair).empty()) {
+            return 10;
+        }
+    }
+
+    if (targetType.isDetector()) {
+        if (!attacker->getUnitsInRadius(8 * 32, BWAPI::Filter::IsAlly && !BWAPI::Filter::IsNeutral && (BWAPI::Filter::HasPermanentCloak || BWAPI::Filter::IsCloakable)).empty()) {
+            return 10;
         }
     }
 

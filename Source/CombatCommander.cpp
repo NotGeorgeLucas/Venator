@@ -926,6 +926,10 @@ void CombatCommander::updateAttackSquads()
     flyingSquad.setOrder(getAttackOrder(&flyingSquad));
 }
 
+
+/* CODE ADDED */
+// Corsairs delegated as supports outside PvZ
+
 // Unit definitely belongs in the Flying squad.
 bool CombatCommander::isFlyingSquadUnit(const BWAPI::UnitType type) const
 {
@@ -934,7 +938,7 @@ bool CombatCommander::isFlyingSquadUnit(const BWAPI::UnitType type) const
         type == BWAPI::UnitTypes::Terran_Wraith ||
         type == BWAPI::UnitTypes::Terran_Valkyrie ||
         type == BWAPI::UnitTypes::Terran_Battlecruiser ||
-        type == BWAPI::UnitTypes::Protoss_Corsair ||
+        (type == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() == BWAPI::Races::Zerg) ||
         type == BWAPI::UnitTypes::Protoss_Scout ||
         _carrierCount >= CarrierIndependenceCount && type == BWAPI::UnitTypes::Protoss_Carrier;
 }
@@ -945,7 +949,8 @@ bool CombatCommander::isOptionalFlyingSquadUnit(const BWAPI::UnitType type) cons
 {
     return
         type == BWAPI::UnitTypes::Zerg_Devourer ||
-        type == BWAPI::UnitTypes::Protoss_Carrier;
+        type == BWAPI::UnitTypes::Protoss_Carrier ||
+        (type == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() != BWAPI::Races::Zerg);
 }
 
 // Unit belongs in the ground squad.
@@ -1803,8 +1808,7 @@ bool CombatCommander::unitIsGoodToDrop(const BWAPI::Unit unit) const
 {
     return
         unit->getType() == BWAPI::UnitTypes::Protoss_Dark_Templar ||
-        unit->getType() == BWAPI::UnitTypes::Terran_Vulture ||
-        /* CODE ADDED */ unit->getType() == BWAPI::UnitTypes::Protoss_Zealot;
+        unit->getType() == BWAPI::UnitTypes::Terran_Vulture;
 }
 
 // Called once per frame from update(), above.
@@ -2175,22 +2179,23 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
         }
     }
 
+    /* CODE ADDED */
     // Pure AirToAir units should prefer to attack main if we don't have vision there and there isn't a spore there
     if (!canAttackGround && canAttackAir && !hasGround) {
         Base* enemyMain = the.bases.enemyStart();
-        if (enemyMain) {
+        if (enemyMain && the.enemyRace() == BWAPI::Races::Zerg) {
             bool mainHatcheryVisible = false;
             bool isDefended = false;
-            std::vector<UnitInfo> enemyForce;
-            InformationManager::Instance().getNearbyForce(enemyForce, enemyMain->getCenter(), the.enemy(), 20 * 32);
-            for (UnitInfo & ui : enemyForce) {
+            const auto& enemies = InformationManager::Instance().getUnitInfo(the.enemy());
+            for (auto & kv : enemies) {
+                auto ui = kv.second;
                 auto u = ui.unit;
                 if (u && u->exists()) {
                     if ((u->getType() == BWAPI::UnitTypes::Zerg_Hatchery ||
                         u->getType() == BWAPI::UnitTypes::Zerg_Lair ||
                         u->getType() == BWAPI::UnitTypes::Zerg_Hive) &&
                         u->isVisible() &&
-                        u->getDistance(enemyMain->getCenter()) < 20 * 32)
+                        u->getDistance(enemyMain->getCenter()) < 15 * 32)
                     {
                         mainHatcheryVisible = true;
                     }
@@ -2200,7 +2205,7 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
                 }
             }
 
-            if (!mainHatcheryVisible && !isDefended) {
+            if (!mainHatcheryVisible && !isDefended && the.now() <= 24 * 60 * 12) {
                 returnBase = enemyMain;
                 returnKey = "hunt overlords";
                 return;

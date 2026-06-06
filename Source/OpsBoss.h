@@ -54,6 +54,7 @@ namespace UAlbertaBot
         const int clusterRange = 3 * 32;
 
         std::vector<UnitCluster> enemyClusters;
+        std::vector<UnitCluster> friendlyClusters;
 
         int defenderUpdateFrame;
         std::vector<UnitCluster> groundDefenseClusters;
@@ -73,6 +74,8 @@ namespace UAlbertaBot
         void cluster(BWAPI::Player player, const BWAPI::Unitset & units, std::vector<UnitCluster> & clusters);
 
         void update();
+
+        const std::vector<UnitCluster>& getFriendlyClusters() const { return friendlyClusters; };
 
         const std::vector<UnitCluster> & getGroundDefenseClusters();
         const std::vector<UnitCluster> & getAirDefenseClusters();

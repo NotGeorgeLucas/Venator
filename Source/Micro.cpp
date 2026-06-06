@@ -958,8 +958,7 @@ void Micro::CatchAndAttackUnit(BWAPI::Unit attacker, BWAPI::Unit target)
 
 /* CODE ADDED */
 // Special command for carriers to keep attacking while moving, without breaking them as 
-void Micro::CarrierAttackMove(BWAPI::Unit carrier, BWAPI::Unit target, BWAPI::Position movePos)
-{
+void Micro::CarrierAttackMove(BWAPI::Unit carrier, BWAPI::Unit target, BWAPI::Position movePos) {
     if (!carrier || !carrier->exists() || !target || !target->exists())
         return;
 

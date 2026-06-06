@@ -267,6 +267,14 @@ void ProductionManager::manageBuildOrderQueue()
                     continue;
                 }
             }
+            else if (t == BWAPI::UnitTypes::Protoss_Fleet_Beacon)
+            {
+                if (the.my.all.count(BWAPI::UnitTypes::Protoss_Fleet_Beacon) >= 1)
+                {
+                    _queue.doneWithHighestPriorityItem();
+                    continue;
+                }
+            }
         }
 
         // WORKAROUND for another instance of the same BOSS bug: Keep terran to 1 starport.

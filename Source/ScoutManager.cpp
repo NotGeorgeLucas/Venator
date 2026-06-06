@@ -477,9 +477,11 @@ void ScoutManager::workerGoHome()
 	UAB_ASSERT(_workerScout && _workerGoHome, "can't go home");
 
 	// 1. Find a friendly base that it looks like the worker can reach.
-	Base * home = the.bases.myFront()->getSafeTileDistance(_workerScout->getTilePosition()) >= 0
-		? the.bases.myFront()
-		: nullptr;
+    Base* front = the.bases.myFront();
+    Base* home = (front && _workerScout &&
+        front->getSafeTileDistance(_workerScout->getTilePosition()) >= 0)
+        ? front
+        : nullptr;
 
 	if (!home)
 	{

@@ -729,7 +729,7 @@ bool MacroAct::hasPotentialProducer() const
     // BWAPI::Broodwar->printf("missing producer for %s", getName().c_str());
 
     // We didn't find a producer. We can't make it.
-    return false;
+    return the.my.all.count(producerType) > 0;
 }
 
 // Check the units needed for producing a unit type, beyond its producer.
@@ -754,7 +754,7 @@ bool MacroAct::hasTech() const
     {
         BWAPI::UnitType requiredType = typeAndCount.first;
         if (ourUnitTypes.find(requiredType) == ourUnitTypes.end() &&
-            (ProductionManager::Instance().isOutOfBook() || !requiredType.isBuilding() || !BuildingManager::Instance().isBeingBuilt(requiredType)))
+            (ProductionManager::Instance().isOutOfBook() || !requiredType.isBuilding() || !BuildingManager::Instance().isBeingBuilt(requiredType) || the.my.all.count(requiredType) > 0))
         {
             // BWAPI::Broodwar->printf("missing tech: %s requires %s", getName().c_str(), requiredType.getName().c_str());
             // We don't have a type we need. We don't have the tech.

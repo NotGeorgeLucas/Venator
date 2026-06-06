@@ -23,6 +23,7 @@ void MicroAirToAir::executeMicro(const BWAPI::Unitset & targets, const UnitClust
     assignTargets(units, targets);
 }
 
+const int dwebCastRange = BWAPI::TechTypes::Disruption_Web.getWeapon().maxRange();
 
 std::vector<BWAPI::Unit> corsairCreationOrder;
 std::map<BWAPI::Unit, int> corsairOrderIndex;
@@ -32,6 +33,9 @@ BWAPI::Unit hunterB = nullptr;
 
 std::map<BWAPI::Unit, bool> hasVisitedBase;
 std::map<BWAPI::Unit, BWAPI::Position> currentUnitTargetPoint;
+
+std::map<int, int> lastSeenEnergy;
+std::map<int, int> energyByUnit;
 
 void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::Unitset & targets)
 {
@@ -43,6 +47,42 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
             u->isFlying() &&
             !infestable(u);
     });
+
+    bool scheduledDWebCast = false;
+
+    std::unordered_set<int> alive;
+    for (BWAPI::Unit u : airUnits) {
+        if (!u || !u->exists()) continue;
+        if (u->getPlayer() != the.self()) continue;
+        if (u->getType().maxEnergy() <= 0) continue;
+
+        int id = u->getID();
+        int energy = u->getEnergy();
+
+        alive.insert(id);
+
+        auto it = lastSeenEnergy.find(id);
+        if (it != lastSeenEnergy.end()) {
+            if (energy < it->second) {
+                // In theory, dark archons could trigger this, but it's only a second delay on dweb, it's not gonna matter... Right?
+                _lastDWebFrame = the.now();
+            }
+        }
+
+        lastSeenEnergy[id] = energy;
+        energyByUnit[id] = energy;
+    }
+
+    // purge stale entries (units no longer in cluster / dead / gone / whatever)
+    for (auto it = energyByUnit.begin(); it != energyByUnit.end(); ) {
+        if (alive.find(it->first) == alive.end()) {
+            lastSeenEnergy.erase(it->first);
+            it = energyByUnit.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
 
 
     for (BWAPI::Unit u : airUnits) {
@@ -86,19 +126,22 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
     BWAPI::Position ref = enemyBase.isValid() ? enemyBase : BWAPI::Position(0, 0);
 
-    // FIX hunter A
-    if (!hunterA || !hunterA->exists()) {
-        hunterA = pickNewHunter(airUnits, hunterB, nullptr, ref);
-    }
+    if (the.enemyRace() == BWAPI::Races::Zerg) {
 
-    // FIX hunter B
-    if (corsairCreationOrder.size() >= 3 && (!hunterB || !hunterB->exists())) {
-        hunterB = pickNewHunter(airUnits, hunterA, nullptr, ref);
-    }
+        // FIX hunter A
+        if (!hunterA || !hunterA->exists()) {
+            hunterA = pickNewHunter(airUnits, hunterB, nullptr, ref);
+        }
 
-    // Safety just in case
-    if (hunterA && hunterB && hunterA == hunterB) {
-        hunterB = pickNewHunter(airUnits, hunterA, nullptr, ref);
+        // FIX hunter B
+        if (corsairCreationOrder.size() >= 3 && (!hunterB || !hunterB->exists())) {
+            hunterB = pickNewHunter(airUnits, hunterA, nullptr, ref);
+        }
+
+        // Safety just in case
+        if (hunterA && hunterB && hunterA == hunterB) {
+            hunterB = pickNewHunter(airUnits, hunterA, nullptr, ref);
+        }
     }
 
 
@@ -136,21 +179,6 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
             BWAPI::Position tile = ui.lastPosition;
 
-            if (BWAPI::Broodwar->isVisible(BWAPI::TilePosition(tile))) {
-                bool exists = false;
-
-                for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(tile, 32)) {
-                    if (u->getPlayer() == BWAPI::Broodwar->enemy() &&
-                        u->getType() == building) {
-                        exists = true;
-                        break;
-                    }
-                }
-
-                if (!exists)
-                    continue; // memory is wrong, ignore it
-            }
-
             if (ui.lastPosition.getDistance(pos) <= 8 * 32)
                 return true;
         }
@@ -162,16 +190,137 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
     {
 
         if (!hasVisitedBase[airUnit]) {
-            if (airUnit->getDistance(enemyBase) < 10 * 32) {
+            if (airUnit->getDistance(enemyBase) < 12 * 32) {
                 hasVisitedBase[airUnit] = true;
             }
         }
 
-        bool isHunter = (airUnit == hunterA || airUnit == hunterB);
-        if (order->isCombatOrder() || isHunter)
-        {
+        bool isHunter = the.enemyRace() == BWAPI::Races::Zerg && (airUnit == hunterA || airUnit == hunterB);
+
+
+        /* CODE ADDED */
+        // Added the whole threat avoidance and overlord hunting logic, oh and also the DWeb logic
+        const std::map<BWAPI::Unit, UnitInfo>& enemyForce = InformationManager::Instance().getUnitInfo(the.enemy());
+        const std::vector<Threat> threatVector = computeThreats(airUnit, enemyForce);
+
+        if (order->isCombatOrder() || isHunter || !threatVector.empty()) {
             BWAPI::Unit target = getTarget(airUnit, airTargets);
-            if (target && !hasStructureNearby(target->getPosition(), BWAPI::UnitTypes::Zerg_Spore_Colony)) {
+
+            BWAPI::Broodwar->drawCircleMap(airUnit->getPosition(), dwebCastRange, canDWeb(airUnit) ? BWAPI::Colors::Red : BWAPI::Colors::Blue);
+
+            bool escortCorsair = airUnit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() != BWAPI::Races::Zerg && (!target || threatVector.empty());
+
+
+            // Selfish web for overlord hunting
+            bool shouldDWeb = false;
+
+            // Support dweb to help allies fight
+            bool shouldSupportDWeb = false;
+            bool canCast = canDWeb(airUnit);
+            bool groundSupport = hasGroundSupport(airUnit);
+
+            // DWeb if we can disable all threats
+            BWAPI::Position dwebPos = netForAllThreats(threatVector);
+            if (dwebPos.isValid() && canCast && (target || !threatVector.empty()) && the.now() - _lastDWebFrame >= 48) {
+                // This is a selfish web, not much use from it if we only cover a single unit when we have support nearby
+                if (!groundSupport || !threatVector.empty()) {
+                    shouldDWeb = true;
+                }
+            }
+
+            // Or if we can support
+            BWAPI::Position supDWebPos = BWAPI::Positions::Invalid;
+            if (!shouldDWeb && canCast && groundSupport && the.now() - _lastDWebFrame >= 48) {
+
+
+                std::vector<UnitInfo> enemies;
+                the.info.getNearbyForce(enemies, airUnit->getPosition(), the.enemy(), 12 * 32);
+
+                supDWebPos = dwebPos.isValid() ? dwebPos : getBestWebCast(airUnit, enemies);
+                if (supDWebPos.isValid()) {
+                    shouldSupportDWeb = true;
+                }
+            }
+
+
+            if (escortCorsair) {
+                const std::vector<UnitCluster> allyGroups = the.ops.getFriendlyClusters();
+
+                const UnitCluster* strongestGroup = nullptr;
+                int strongestSize = -1;
+
+                std::vector<const UnitCluster*> weakerGroups;
+
+                for (const UnitCluster& group : allyGroups) {
+                    int groupSize = 0;
+                    for (BWAPI::Unit u : group.units) {
+                        if (u->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
+                            groupSize += 5;
+                        }
+                        else if (u->getType() != BWAPI::UnitTypes::Protoss_Corsair) {
+                            groupSize++;
+                        }
+                    }
+                    if (groupSize <= 0) continue;
+
+                    if (groupSize > strongestSize) {
+                        strongestSize = groupSize;
+                        strongestGroup = &group;
+                    }
+                }
+
+                for (const UnitCluster& group : allyGroups) {
+                    if (&group == strongestGroup) continue;
+                    if (group.units.empty()) continue;
+                    weakerGroups.push_back(&group);
+                }
+
+                // Deterministic order for weaker groups so the assignment stays stable.
+                std::sort(weakerGroups.begin(), weakerGroups.end(),
+                    [](const UnitCluster* a, const UnitCluster* b) {
+                        if (a->units.size() != b->units.size())
+                            return a->units.size() > b->units.size();
+                        if (a->center.x != b->center.x)
+                            return a->center.x < b->center.x;
+                        return a->center.y < b->center.y;
+                    });
+
+                const int corsairSlot = (corsairOrderIndex.find(airUnit) != corsairOrderIndex.end()) ? corsairOrderIndex[airUnit] : 0;
+
+                const UnitCluster* chosenGroup = nullptr;
+
+                if (strongestGroup) {
+                    if (weakerGroups.empty()) {
+                        chosenGroup = strongestGroup;
+                    }
+                    else if (corsairSlot < 2) {
+                        chosenGroup = strongestGroup;
+                    }
+                    else {
+                        chosenGroup = weakerGroups[(corsairSlot - 2) % weakerGroups.size()];
+                    }
+                }
+
+                if (chosenGroup) {
+                    BWAPI::Position moveTarget = chosenGroup->center;
+                    int moveDist = airUnit->getDistance(moveTarget);
+                    if ((!canDWeb(airUnit) && moveDist >= 48) || (canDWeb(airUnit) && moveDist >= 4 * 32)) {
+                        if (!shouldDWeb && !shouldSupportDWeb) {
+                            the.micro.Move(airUnit, moveTarget);
+                            continue;
+                        }
+                    }
+                }
+                else {
+                    if (the.bases.myMain() && the.bases.myMain()->getPosition().isValid()) {
+                        // Retreat to main as final fallback
+                        the.micro.MoveNear(airUnit, the.bases.myMain()->getPosition());
+                        continue;
+                    }
+                }
+            }
+
+            if (target || !threatVector.empty() || shouldDWeb || shouldSupportDWeb) {
                 // A target was found.
                 if (Config::Debug::DrawUnitTargets)
                 {
@@ -179,84 +328,22 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                 }
 
 
-                /* CODE ADDED */
-                // Added the whole threat avoidance and overlord hunting logic
-                const auto & enemyForce = InformationManager::Instance().getUnitInfo(the.enemy());
-
-                // Threats are enemies that can hit us and we can't hit back
-                std::vector<BWAPI::Unit> threatVector;
-                for (auto& kv : enemyForce) {
-                    UnitInfo ui = kv.second;
-                    if (ui.lastPosition.isValid() && ui.lastPosition.getDistance(airUnit->getPosition()) <= 8 * 32) {
-                        if (ui.unit && ui.unit->exists()) {
-                            auto u = ui.unit;
-                            if ((!u->isFlying() && u->getType().airWeapon() != BWAPI::WeaponTypes::None)
-                                || u->getType() == BWAPI::UnitTypes::Zerg_Spore_Colony) {   // Spores could be getting built and don't technically have weapons while they are being constructed
-                                threatVector.push_back(u);
-                            }
-                        }
-                    }
-                }
-
-                auto pathSafe = [&](const BWAPI::Position& from, const BWAPI::Position& to) -> bool
-                    {
-                        if (!from.isValid() || !to.isValid())
-                            return false;
-
-                        for (auto& threat : threatVector) {
-
-                            if (!threat || !threat->exists())
-                                continue;
-
-                            int range = UnitUtil::GetAttackRange(threat, airUnit);
-
-                            BWAPI::Position tp = threat->getPosition();
-
-                            // destination itself unsafe
-                            if (to.getDistance(tp) <= range)
-                                return false;
-
-                            // path intersects threat zone
-                            if (lineIntersectsCircle(
-                                from.x,
-                                from.y,
-                                to.x,
-                                to.y,
-                                tp.x,
-                                tp.y,
-                                range))
-                            {
-                                return false;
-                            }
-                        }
-
-                        return true;
-                    };
-
-
                 bool inDanger = false;
                 BWAPI::Position fleeVector(0, 0);
 
                 for (auto& threat : threatVector) {
-                    int dist = airUnit->getDistance(threat);
+                    int dist;
+                    int distA = airUnit->getDistance(threat.currPos);
+                    int distB = airUnit->getDistance(threat.predictedPos);
+                    dist = std::min(distA, distB);
 
-                    if (threat->getType() == BWAPI::UnitTypes::Zerg_Scourge) {
-                        // bigger radius because they move fast and explode
-                        if (dist <= 5 * 32) {
-                            inDanger = true;
-
-                            BWAPI::Position away = airUnit->getPosition() - threat->getPosition();
-                            fleeVector += away;
-                        }
-                        continue;
-                    }
-
-                    int range = UnitUtil::GetAttackRange(threat, airUnit) + 32;
+                    int range = threat.range;
 
                     if (dist <= range) {
                         inDanger = true;
 
-                        BWAPI::Position away = airUnit->getPosition() - threat->getPosition();
+                        BWAPI::Position away;
+                        away = distA < distB? airUnit->getPosition() - threat.currPos : airUnit->getPosition() - threat.predictedPos;
                         fleeVector += away;
                     }
                 }
@@ -264,187 +351,288 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                 // We want to attack targets if we can get to them without getting in range of a threat
                 bool targetSafe = true;
                 BWAPI::Position safeAttackPoint = BWAPI::Positions::Invalid;
-                for (auto& threat : threatVector) {
-                    int threatRange = UnitUtil::GetAttackRange(threat, airUnit);
-                    int distThreatToTarget = threat->getDistance(target);
+                if (target) {
 
-                    if (distThreatToTarget <= threatRange) {
+                    for (auto& threat : threatVector) {
+                        int threatRange = threat.range;
+                        int distThreatToTarget = threat.predictedPos.getDistance(target->getPosition());
+
+                        if (distThreatToTarget <= threatRange) {
 
 
-                        int attackRange = ((int)((double)UnitUtil::GetAttackRange(airUnit, target)) * 0.8);
+                            int attackRange = ((int)((double)UnitUtil::GetAttackRange(airUnit, target)) * 0.8);
 
-                        std::vector<BWAPI::Position> firingPositions;
-                        std::vector<BWAPI::Position> safeFiringPositions;
+                            std::vector<BWAPI::Position> firingPositions;
+                            std::vector<BWAPI::Position> safeFiringPositions;
 
-                        for (int angle = 0; angle < 360; angle += 20) {
-                            double rad = angle * M_PI / 180.0;
+                            for (int angle = 0; angle < 360; angle += 20) {
+                                double rad = angle * M_PI / 180.0;
 
-                            int x = target->getPosition().x + int(cos(rad) * (attackRange - 8));
-                            int y = target->getPosition().y + int(sin(rad) * (attackRange - 8));
+                                int x = target->getPosition().x + int(cos(rad) * (attackRange - 8));
+                                int y = target->getPosition().y + int(sin(rad) * (attackRange - 8));
 
-                            BWAPI::Position p(x, y);
+                                BWAPI::Position p(x, y);
 
-                            if (p.isValid())
-                                firingPositions.push_back(p);
-                        }
+                                if (p.isValid())
+                                    firingPositions.push_back(p);
+                            }
 
-                        for (BWAPI::Position p : firingPositions) {
-                            bool isSafe = true;
-                            for (auto& threat : threatVector) {
-                                int range = UnitUtil::GetAttackRange(threat, airUnit);
+                            for (BWAPI::Position p : firingPositions) {
+                                bool isSafe = true;
+                                for (auto& threat : threatVector) {
+                                    int range = threat.range;
 
-                                if (p.getDistance(threat->getPosition()) <= range) {
-                                    isSafe = false;
-                                    break;
+                                    if (p.getDistance(threat.currPos) <= range || p.getDistance(threat.predictedPos) <= range) {
+                                        isSafe = false;
+                                        break;
+                                    }
+                                }
+
+                                if (isSafe) {
+                                    safeFiringPositions.push_back(p);
                                 }
                             }
 
-                            if (isSafe) {
-                                safeFiringPositions.push_back(p);
+                            if (safeFiringPositions.size() == 0) {
+                                targetSafe = false;
+                                break;
                             }
-                        }
+                            else {
+                                BWAPI::Position bestPoint = BWAPI::Positions::Invalid;
+                                double bestDist = DBL_MAX;
 
-                        if (safeFiringPositions.size() == 0) {
-                            targetSafe = false;
-                            break;
-                        }
-                        else {
-                            BWAPI::Position bestPoint = BWAPI::Positions::Invalid;
-                            double bestDist = DBL_MAX;
-
-                            for (auto& p : safeFiringPositions) {
+                                for (auto& p : safeFiringPositions) {
 
 
-                                if (!pathSafe(airUnit->getPosition(), p))
-                                    continue;
+                                    if (!pathSafe(airUnit->getPosition(), p, threatVector, airUnit))
+                                        continue;
 
-                                double dist = airUnit->getPosition().getApproxDistance(p);
+                                    double dist = airUnit->getPosition().getApproxDistance(p);
 
-                                if (dist < bestDist) {
-                                    bestDist = dist;
-                                    bestPoint = p;
+                                    if (dist < bestDist) {
+                                        bestDist = dist;
+                                        bestPoint = p;
+                                    }
                                 }
+
+                                safeAttackPoint = bestPoint;
                             }
 
-                            safeAttackPoint = bestPoint;
                         }
-
                     }
                 }
+
+
 
                 // Flee if we're being hit
                 if (inDanger) {
-                    if (fleeVector != BWAPI::Position(0,0)) {
-                        BWAPI::Position fleeTo = airUnit->getPosition() + fleeVector;
-                        the.micro.Move(airUnit, fleeTo);
+
+                    if (shouldDWeb) {
+
+                        int dist = dwebPos.getDistance(airUnit->getPosition());
+
+                        if (dist <= dwebCastRange && !scheduledDWebCast) {
+                            airUnit->useTech(BWAPI::TechTypes::Disruption_Web, dwebPos);
+                            scheduledDWebCast = true;
+                        }
+                        else {
+                            the.micro.Move(airUnit, dwebPos);
+                        }
+
+                        BWAPI::Broodwar->drawBoxMap(dwebPos.x - 60, dwebPos.y - 40, dwebPos.x + 60, dwebPos.y + 40, BWAPI::Colors::Blue);
+
                     }
+                    else if (shouldSupportDWeb && !scheduledDWebCast) {
+
+                        int dist = supDWebPos.getDistance(airUnit->getPosition());
+
+                        if (dist <= dwebCastRange) {
+                            airUnit->useTech(BWAPI::TechTypes::Disruption_Web, supDWebPos);
+                            scheduledDWebCast = true;
+                        }
+                        else {
+                            the.micro.Move(airUnit, supDWebPos);
+                        }
+                        BWAPI::Broodwar->drawBoxMap(supDWebPos.x - 60, supDWebPos.y - 40, supDWebPos.x + 60, supDWebPos.y + 40, BWAPI::Colors::Blue);
+
+                    }
+                    else {
+                        if (fleeVector != BWAPI::Position(0, 0)) {
+                            BWAPI::Position fleeTo = airUnit->getPosition() + fleeVector;
+                            
+                            int mapW = BWAPI::Broodwar->mapWidth() * 32; int mapH = BWAPI::Broodwar->mapHeight() * 32;
+
+                            // Clamp to map bounds
+                            fleeTo.x = std::max(0, std::min(fleeTo.x, mapW - 1));
+                            fleeTo.y = std::max(0, std::min(fleeTo.y, mapH - 1));
+                                
+                            the.micro.Move(airUnit, fleeTo);
+                        }
+                    }
+
                     continue;
                 }
 
 
-                // Reposition instead of full retreat if we need to
+                // Reposition instead of full retreat if we need to. Or dweb.
                 if (!targetSafe) {
-                    BWAPI::Position dir = airUnit->getPosition() - target->getPosition();
-                    BWAPI::Position kitePos = airUnit->getPosition() + dir;
 
-                    the.micro.Move(airUnit, kitePos);
-                    continue;
-                }
+                    if (shouldDWeb) {
 
-                int attackRange = UnitUtil::GetAttackRange(airUnit, target);
+                        int dist = dwebPos.getDistance(airUnit->getPosition());
 
-                bool atSafeAttackPoint = airUnit->getPosition().getApproxDistance(safeAttackPoint) < 24;
+                        if (dist <= dwebCastRange && !scheduledDWebCast) {
+                            airUnit->useTech(BWAPI::TechTypes::Disruption_Web, dwebPos);
+                            scheduledDWebCast = true;
+                        }
+                        else {
+                            the.micro.Move(airUnit, dwebPos);
+                        }
 
-                bool canHitTarget = airUnit->getDistance(target) <= attackRange;
-
-                if (atSafeAttackPoint && canHitTarget) {
-                    the.micro.AttackUnit(airUnit, target);
-                    continue;
-                }
-
-                BWAPI::Position start = airUnit->getPosition();
-                BWAPI::Position end = target->getPosition();
-                if (safeAttackPoint.isValid()) { end = safeAttackPoint; }
-
-                bool safeToMove = true;
-
-                for (auto& threat : threatVector) {
-                    BWAPI::Position tPos = threat->getPosition();
-                    auto threatAttackRange = UnitUtil::GetAttackRange(threat, airUnit);
-                    if (lineIntersectsCircle(start.x, start.y, end.x, end.y, tPos.x, tPos.y, threatAttackRange)) {
-                        safeToMove = false;
-                        break;
+                        BWAPI::Broodwar->drawBoxMap(dwebPos.x - 60, dwebPos.y - 40, dwebPos.x + 60, dwebPos.y + 40, BWAPI::Colors::Blue);
                     }
-                }
-                // Go kill things if we're safe
-                if (safeToMove) {
-                    the.micro.CatchAndAttackUnit(airUnit, target);
-                }
-                else {
-                    BWAPI::Position start = airUnit->getPosition();
-                    BWAPI::Position end = target->getPosition();
-                    if (safeAttackPoint.isValid()) { end = safeAttackPoint; }
+                    else if (shouldSupportDWeb) {
 
-                    BWAPI::Position dir = end - start;
-                    BWAPI::Position midpoint = start + dir / 2;
+                        int dist = supDWebPos.getDistance(airUnit->getPosition());
 
-                    if (dir == BWAPI::Position(0, 0)) {
+                        if (dist <= dwebCastRange && !scheduledDWebCast) {
+                            airUnit->useTech(BWAPI::TechTypes::Disruption_Web, supDWebPos);
+                            scheduledDWebCast = true;
+                        }
+                        else {
+                            the.micro.Move(airUnit, supDWebPos);
+                        }
+
+                        BWAPI::Broodwar->drawBoxMap(supDWebPos.x - 60, supDWebPos.y - 40, supDWebPos.x + 60, supDWebPos.y + 40, BWAPI::Colors::Blue);
+                    }
+                    else {
+
+                        int closestDist = INT_MAX;
+                        BWAPI::Position closestThreat = BWAPI::Positions::Invalid;
+                        for (Threat t : threatVector) {
+                            int dist = t.currPos.getDistance(airUnit->getPosition());
+                            if (dist < closestDist) {
+                                closestThreat = t.currPos;
+                                closestDist = dist;
+                            }
+                        }
+                        BWAPI::Position kitePos = the.bases.myStart()->getPosition();
+                        if (closestThreat.isValid()) {
+                            BWAPI::Position dir = airUnit->getPosition() - closestThreat;
+                            kitePos = airUnit->getPosition() + dir * 2;
+                        }
+
+                        the.micro.Move(airUnit, kitePos);
+                    }
+
+                    continue;
+                }
+                if (target) {
+
+                    int attackRange = UnitUtil::GetAttackRange(airUnit, target);
+
+                    bool atSafeAttackPoint = safeAttackPoint.isValid() && airUnit->getPosition().getApproxDistance(safeAttackPoint) < 24;
+
+                    bool canHitTarget = airUnit->getDistance(target) <= attackRange;
+
+                    if (atSafeAttackPoint && canHitTarget) {
                         the.micro.AttackUnit(airUnit, target);
                         continue;
                     }
 
-                    double midpointDist = airUnit->getPosition().getApproxDistance(midpoint);
+                    BWAPI::Position start = airUnit->getPosition();
+                    BWAPI::Position end = target->getPosition();
+                    if (safeAttackPoint.isValid()) { end = safeAttackPoint; }
 
-                    bool moved = false;
+                    bool safeToMove = true;
 
-                    BWAPI::Position bestMove;
-                    double bestScore = INT_MIN;
-
-                    for (float displace = 16; displace <= midpointDist; displace += 16) {
-                        BWAPI::Position midpointA = midpoint + perpendicularOffset(dir, displace);
-                        BWAPI::Position midpointB = midpoint + perpendicularOffset(dir, -displace);
-
-                        auto evaluateCandidate = [&](const BWAPI::Position& p) -> bool {
-                            for (auto& threat : threatVector) {
-                                if (!p.isValid()) return false;
-                                BWAPI::Position tPos = threat->getPosition();
-                                int range = UnitUtil::GetAttackRange(threat, airUnit) + 32;
-
-                                if (lineIntersectsCircle(start.x, start.y, p.x, p.y, tPos.x, tPos.y, range)) {
-                                    return false; // unsafe
-                                }
-                            }
-
-                            // simple preference: closer to target = better
-                            double score = -start.getDistance(p);
-
-                            if (score > bestScore) {
-                                bestScore = score;
-                                bestMove = p;
-                            }
-
-                            return true;
-                        };
-
-                        evaluateCandidate(midpointA);
-                        evaluateCandidate(midpointB);
+                    for (auto& threat : threatVector) {
+                        BWAPI::Position tPos = threat.currPos;
+                        BWAPI::Position tPosPred = threat.predictedPos;
+                        auto threatAttackRange = threat.range;
+                        if (lineIntersectsCircle(start.x, start.y, end.x, end.y, tPos.x, tPos.y, threatAttackRange)) {
+                            safeToMove = false;
+                            break;
+                        }
+                        if (lineIntersectsCircle(start.x, start.y, end.x, end.y, tPosPred.x, tPosPred.y, threatAttackRange)) {
+                            safeToMove = false;
+                            break;
+                        }
                     }
-
-                    if (bestScore != INT_MIN) {
-                        the.micro.Move(airUnit, bestMove);
-                        moved = true;
+                    // Go kill things if we're safe
+                    if (safeToMove) {
+                        the.micro.CatchAndAttackUnit(airUnit, target);
                     }
+                    else {
+                        BWAPI::Position start = airUnit->getPosition();
+                        BWAPI::Position end = target->getPosition();
+                        if (safeAttackPoint.isValid()) { end = safeAttackPoint; }
 
-                    if (!moved) {
+                        BWAPI::Position dir = end - start;
+                        BWAPI::Position midpoint = start + dir / 2;
 
-                        if (isHunter && hasVisitedBase[airUnit])
-                        {
-                            handleHunterPatrol(airUnit, enemyBase, enemyNatural);
+                        if (dir == BWAPI::Position(0, 0)) {
+                            the.micro.AttackUnit(airUnit, target);
                             continue;
                         }
 
-                        BWAPI::Position escape = start + (start - end);
-                        the.micro.Move(airUnit, escape);
+                        double midpointDist = airUnit->getPosition().getApproxDistance(midpoint);
+
+                        bool moved = false;
+
+                        BWAPI::Position bestMove;
+                        double bestScore = INT_MIN;
+
+                        for (float displace = 16; displace <= midpointDist; displace += 16) {
+                            BWAPI::Position midpointA = midpoint + radialOffset(dir, displace);
+                            BWAPI::Position midpointB = midpoint + radialOffset(dir, -displace);
+
+                            auto evaluateCandidate = [&](const BWAPI::Position& p) -> bool {
+                                for (auto& threat : threatVector) {
+                                    if (!p.isValid()) return false;
+                                    BWAPI::Position tPos = threat.currPos;
+                                    BWAPI::Position tPosPred = threat.predictedPos;
+                                    int range = threat.range;
+
+                                    if (lineIntersectsCircle(start.x, start.y, p.x, p.y, tPos.x, tPos.y, range)) {
+                                        return false; // unsafe
+                                    }
+                                    if (lineIntersectsCircle(start.x, start.y, end.x, end.y, tPosPred.x, tPosPred.y, range)) {
+                                        break;
+                                    }
+                                }
+
+                                // simple preference: closer to target = better
+                                double score = -start.getDistance(p);
+
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    bestMove = p;
+                                }
+
+                                return true;
+                            };
+
+                            evaluateCandidate(midpointA);
+                            evaluateCandidate(midpointB);
+                        }
+
+                        if (bestScore != INT_MIN) {
+                            the.micro.Move(airUnit, bestMove);
+                            moved = true;
+                        }
+
+                        if (!moved) {
+
+                            if (isHunter && hasVisitedBase[airUnit])
+                            {
+                                handleHunterPatrol(airUnit, enemyBase, enemyNatural);
+                                continue;
+                            }
+
+                            BWAPI::Position escape = start + (start - end);
+                            the.micro.Move(airUnit, escape);
+                        }
                     }
                 }
             }
@@ -459,7 +647,13 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                 }
                 else
                 {
-                    the.micro.AttackMove(airUnit, order->getPosition());
+                    if (the.enemyRace() == BWAPI::Races::Zerg || !hasGroundSupport(airUnit)) {
+                        the.micro.AttackMove(airUnit, order->getPosition());
+                    }
+                    else {
+                        the.micro.HoldPosition(airUnit);
+                    }
+
                 }
 
             }
@@ -481,7 +675,7 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
             airUnit->getDistance(order->getPosition()) - target->getDistance(order->getPosition());
 
         // Skip targets that are too far away to worry about.
-        if (range >= 13 * 32)
+        if (range >= 14 * 32)
         {
             continue;
         }
@@ -490,7 +684,7 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
         // We care about unit-target range and target-order position distance.
         int score = 0;
         if (target->getType() == BWAPI::UnitTypes::Zerg_Overlord) {
-            score = 5 * 32 * priority - (int)((double)range / 5.0);
+            score = 5 * 32 * priority - (int)((double)range / 10.0);
         }
         else {
             score = 5 * 32 * priority - range;
@@ -540,7 +734,7 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
             score += 24;
 
             // Scaling bonus
-            score += static_cast<int>(missingRatio * 80);
+            score += static_cast<int>(missingRatio * 300);
         }
 
 
@@ -574,6 +768,34 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
 }
 
 
+
+// Threats are enemies that can hit us and we can't hit back
+std::vector<MicroAirToAir::Threat> MicroAirToAir::computeThreats(BWAPI::Unit & airUnit, const std::map<BWAPI::Unit, UnitInfo> & enemyForce) const {
+    std::vector<Threat> threatVector;
+    for (auto& kv : enemyForce) {
+        UnitInfo ui = kv.second;
+
+        if (!ui.unit || !ui.unit->exists()) continue;
+
+        BWAPI::Unit u = ui.unit;
+
+        if (!ui.lastPosition.isValid()) continue;
+        if (ui.lastPosition.getDistance(airUnit->getPosition()) > 10 * 32)  continue;
+
+
+        bool isThreat = ((!u->isFlying() && u->getType().airWeapon() != BWAPI::WeaponTypes::None) || (u->getBuildType() && u->getBuildType() == BWAPI::UnitTypes::Zerg_Spore_Colony)) && !u->isUnderDisruptionWeb();
+
+        if (!isThreat) continue;
+
+        Threat t(ui, airUnit);
+
+        threatVector.push_back(t);
+    }
+
+    return threatVector;
+}
+
+
 void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Position& enemyBase, const BWAPI::Position& enemyNatural) {
     std::vector<BWAPI::Position> patrolPoints;
 
@@ -594,21 +816,6 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
                     continue;
 
                 BWAPI::Position tile = ui.lastPosition;
-
-                if (BWAPI::Broodwar->isVisible(BWAPI::TilePosition(tile))) {
-                    bool exists = false;
-
-                    for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(tile, 32)) {
-                        if (u->getPlayer() == BWAPI::Broodwar->enemy() &&
-                            u->getType() == building) {
-                            exists = true;
-                            break;
-                        }
-                    }
-
-                    if (!exists)
-                        continue; // memory is wrong, ignore it
-                }
 
                 if (ui.lastPosition.getDistance(pos) <= 8 * 32)
                     return true;
@@ -634,21 +841,6 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
 
                 BWAPI::Position tile = ui.lastPosition;
 
-                if (BWAPI::Broodwar->isVisible(BWAPI::TilePosition(tile))) {
-                    bool exists = false;
-
-                    for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(tile, 32)) {
-                        if (u->getPlayer() == BWAPI::Broodwar->enemy() &&
-                            u->getType().isResourceDepot()) {
-                            exists = true;
-                            break;
-                        }
-                    }
-
-                    if (!exists)
-                        continue; // memory is wrong, ignore it
-                }
-
                 if (ui.lastPosition.getDistance(pos) <= 10 * 32) // slightly bigger radius than looking for spores
                     return true;
             }
@@ -656,11 +848,58 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
             return false;
         };
 
-    if (enemyBase.isValid() && hasZergBaseNearby(enemyBase) && !hasStructureNearby(enemyBase, BWAPI::UnitTypes::Zerg_Spore_Colony))
-        patrolPoints.push_back(enemyBase);
 
-    if (enemyNatural.isValid() && hasZergBaseNearby(enemyNatural) && !hasStructureNearby(enemyNatural, BWAPI::UnitTypes::Zerg_Spore_Colony))
+    auto getNearbyThreats= [&](const BWAPI::Position& pos) -> std::vector<Threat> {
+        std::vector<Threat> spores;
+
+        if (!pos.isValid()) return spores;
+
+        const auto& enemies = InformationManager::Instance().getUnitInfo(the.enemy());
+
+        for (const auto& kv : enemies) {
+            const UnitInfo& ui = kv.second;
+
+            if (ui.type.airWeapon() == BWAPI::WeaponTypes::None || ui.type.isFlyer()) continue;
+            if (ui.goneFromLastPosition || ui.lifted) continue;
+            if (!ui.unit || !ui.unit->exists()) continue;
+
+
+            Threat t(ui, airUnit);
+            if (ui.lastPosition.getDistance(pos) <= 8 * 32) spores.push_back(t);
+        }
+
+        return spores;
+        };
+
+
+    auto canSafelyPatrol = [&](const BWAPI::Position& pos) -> bool {
+
+        if (!pos.isValid()) return false;
+
+        if (!hasZergBaseNearby(pos)) return false;
+
+        auto spores = getNearbyThreats(pos);
+
+        // No spores = safe
+        if (spores.empty()) return true;
+
+        // Need DWeb capability
+        if (!canDWeb(airUnit)) return false;
+
+        // Must be able to cover ALL spores
+        BWAPI::Position webPos = netForAllThreats(spores);
+
+        return webPos.isValid();
+        };
+
+
+    if (canSafelyPatrol(enemyBase)) {
+        patrolPoints.push_back(enemyBase);
+    }
+
+    if (canSafelyPatrol(enemyNatural)) {
         patrolPoints.push_back(enemyNatural);
+    }
 
     if (patrolPoints.empty()) {
         the.micro.AttackMove(airUnit, order->getPosition());
@@ -680,7 +919,7 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
     }
 
     // Switch if reached
-    if (airUnit->getDistance(currentTarget) < 4 * 32) {
+    if (airUnit->getDistance(currentTarget) < 5 * 32) {
         if (patrolPoints.size() == 1) {
             currentUnitTargetPoint[airUnit] = patrolPoints[0];
         }
@@ -691,10 +930,165 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
 
     BWAPI::Position targetPos = currentUnitTargetPoint[airUnit];
 
-    BWAPI::Broodwar->drawCircleMap(targetPos, 4 * 32, BWAPI::Colors::Cyan, false);
+    BWAPI::Broodwar->drawCircleMap(targetPos, 5 * 32, BWAPI::Colors::Cyan, false);
     BWAPI::Broodwar->drawLineMap(airUnit->getPosition(), targetPos, BWAPI::Colors::Cyan);
 
     the.micro.Move(airUnit, targetPos);
+}
+
+
+// Returns invalid position if there's no way to cover all threats in DWeb
+BWAPI::Position MicroAirToAir::netForAllThreats(std::vector<Threat> threats) {
+    BWAPI::Position webPos = BWAPI::Positions::Invalid;
+
+    if (threats.size() <= 0) { return webPos; }
+
+    int minX = threats[0].predictedPos.x;
+    int minY = threats[0].predictedPos.y;
+    int maxX = minX;
+    int maxY = minY;
+
+    const int netWidth = 120;
+    const int netHeight = 80;
+
+    for (Threat& t : threats) {
+        BWAPI::Position p = t.predictedPos;
+        
+        int halfW = t.type.width() / 2;
+        int halfH = t.type.height() / 2;
+
+        int left = p.x - halfW;
+        int right = p.x + halfW;
+        int top = p.y - halfH;
+        int bottom = p.y + halfH;
+
+        if (left < minX) minX = left;
+        if (right > maxX) maxX = right;
+        if (top < minY) minY = top;
+        if (bottom > maxY) maxY = bottom;
+    }
+
+    // We can't fit all threats in one spot, so return invalid
+    if (!(maxX - minX > netWidth || maxY - minY > netHeight)) {
+        // Place the web in the middle of the group
+        webPos.x = (minX + maxX) / 2;
+        webPos.y = (minY + maxY) / 2;
+    }
+
+
+    std::vector<Threat> staticThreats;
+
+    for (Threat& t : threats) {
+        if (t.type.isBuilding()) {
+            staticThreats.push_back(t);
+        }
+    }
+    if (webPos.isValid() || threats.size() == staticThreats.size()) {
+        return webPos;
+    }
+    else {
+        return netForAllThreats(staticThreats);
+    }
+}
+
+
+
+BWAPI::Position MicroAirToAir::getBestWebCast(BWAPI::Unit caster, const std::vector<UnitInfo>& targets) {
+    if (targets.empty())
+        return BWAPI::Positions::None;
+
+
+    int bestScore = std::numeric_limits<int>::min();
+    BWAPI::Position bestPos = BWAPI::Positions::None;
+
+    for (const auto& centerUnitInfo : targets) {
+        const auto centerUnit = centerUnitInfo.unit;
+        if (!centerUnit || !centerUnit->exists())
+            continue;
+
+        BWAPI::Position pos = centerUnit->getPosition();
+
+        int left = pos.x - 60;
+        int top = pos.y - 40;
+
+        int right = left + 120;
+        int bottom = top + 80;
+
+        int score = 0;
+
+        for (const auto& ui : targets) {
+            const auto unit = ui.unit;
+            if (!unit || !unit->exists())
+                continue;
+
+            BWAPI::Position pos = unit->getPosition();
+
+            if (pos.x >= left && pos.x < right && pos.y >= top && pos.y < bottom) {
+                score += getEnemyWebValue(caster, unit);
+            }
+        }
+
+        if (score > bestScore && score >= 20) {
+            bestScore = score;
+
+            bestPos = centerUnit->getPosition();
+        }
+    }
+
+    return bestPos;
+}
+
+
+int MicroAirToAir::getEnemyWebValue(BWAPI::Unit caster, BWAPI::Unit target) {
+    if (!target || !target->exists()) return 0;
+    if (target->isFlying() || !target->canAttack() || target->getType().isWorker()) return 0;
+    if (target->isStasised() || target->isUnderDisruptionWeb() || target->isMaelstrommed()) return 0;
+    if (target->getType().isBuilding() && !target->isCompleted()) return 0;
+
+    using namespace BWAPI::UnitTypes;
+
+    int score = 0;
+    BWAPI::UnitType type = target->isCompleted() ? target->getType() : target->getBuildType();
+
+
+    // Massive anti-carrier threats and static defense
+    if (type == Protoss_Photon_Cannon)      score += 20;
+    else if (type == Terran_Missile_Turret) score += 20;
+    else if (type == Zerg_Spore_Colony)     score += 20;
+    else if (type == Terran_Goliath)        score += 15;
+    else if (type == Zerg_Sunken_Colony)    score += 12;
+    else if (type == Terran_Bunker)         score += 12;
+    else if (type == Zerg_Hydralisk)        score += 10;
+    else if (type == Protoss_Archon)        score += 10;
+    else if (type == Protoss_Dragoon)       score += 8;
+    else if (type == Terran_Marine)         score += 4;
+
+    if (score < 4) {
+        // Default - judge by unit cost
+        score += (type.mineralPrice() / 100);
+        score += (type.gasPrice() / 75);
+    }
+
+    // Bonus for units currently fighting
+    if (target->isAttacking())
+        score += 2;
+
+    
+    if (score < 4) {
+        if (UnitUtil::CanAttackAir(target)) {
+            score += 3;
+        }
+        else if (UnitUtil::CanAttackGround(target)) {
+            score += 1;
+        }
+    }
+
+
+    if (score >= 5 && caster->getDistance(target) <= dwebCastRange) {
+        score += 5;
+    }
+
+    return score;
 }
 
 
@@ -731,6 +1125,25 @@ BWAPI::Unit MicroAirToAir::pickNewHunter(const BWAPI::Unitset& airUnits, BWAPI::
 
     return best;
 }
+
+
+
+void MicroAirToAir::regroup(const BWAPI::Position& regroupPosition, const UnitCluster& cluster) const {
+
+    UnitCluster newCl;
+
+    for (BWAPI::Unit unit : cluster.units) {
+        // If we can't cast stasis, or we're too low, or we're alone, go back to normal logic
+        if (!canDWeb(unit) || unit->getShields() + unit->getHitPoints() <= 150 || !hasGroundSupport(unit)) {
+            newCl.add(unit);
+        }
+        // If none of those conditions apply, that means we can continue and cast
+    }
+
+    // Only those that are not in a state to cast
+    MicroManager::regroup(regroupPosition, newCl);   // fall back to normal logic
+}
+
 
 
 
