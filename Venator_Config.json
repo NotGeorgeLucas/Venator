@@ -27,7 +27,7 @@
   "Macro" :
   {
     "BOSSFrameLimit"            : 160,
-    "ProductionJamFrameLimit"   : 1440,
+    "ProductionJamFrameLimit"   : 1740,
     "WorkersPerRefinery"        : 3,
     "WorkersPerPatch"           : { "Zerg" : 1.6, "Protoss" : 2.0, "Terran" : 2.0 },
     "AbsoluteMaxWorkers"        : 65,
@@ -166,7 +166,8 @@
 
         "PvT" :
             { "Protoss" : [
-                { "Weight" : 100, "Strategy" : "2BaseCarrier" }
+                { "Weight" : 100, "Strategy" : "2BaseCarrier" },
+                { "Weight" :  0, "Strategy" : "TheStove", "Weight2": 0 }
             ]},
 
         "PvP" :
@@ -176,7 +177,7 @@
 
         "PvZ" :
             { "Protoss" : [
-                { "Weight" : 35, "Strategy" : "CorsairZealot" },
+                { "Weight" : 25, "Strategy" : "CorsairZealot" },
                 { "Weight" : 5, "Strategy" : "ForgeExpand", "Weight2": 15 }
             ]},
 
@@ -185,6 +186,7 @@
                 { "Weight" : 50, "Strategy" : "2BaseCarrier" },
                 { "Weight" : 50, "Strategy" : "ForgeExpand" }
             ]},
+
         "ZvT" :
             { "Zerg" : [
                 { "Weight" :  5, "Strategy" : "FastPool", "Weight2" : 10 },
@@ -681,7 +683,7 @@
         "OpeningGroup": "carriers",
         "OpeningBuildOrder": [
           "go defensive",
-          "5 x probe",
+          "4 x probe",
           "pylon @ expo",
           "go scout",
           "3 x probe",
@@ -689,7 +691,7 @@
           "2 x photon cannon @ front",
           "nexus",
           "pylon @ main",
-          "4 x probe",
+          "5 x probe",
           "gateway",
           "assimilator",
           "pylon @ main",
@@ -717,7 +719,8 @@
           "carrier",
           "stargate @ main",
           "carrier",
-          "nexus"
+          "nexus",
+          "disruption web"
         ]
       },
       "2BaseCarrierPvP": {
@@ -741,6 +744,7 @@
           "cybernetics core",
           "5 x probe",
           "assimilator",
+          "photon cannon @ main",
           "5 x zealot",
           "4 x probe",
           "stargate @ main",
@@ -759,7 +763,8 @@
           "carrier",
           "stargate @ main",
           "carrier",
-          "nexus"
+          "nexus",
+          "disruption web"
         ]
       },
       "2BaseCarrierPvZ UNUSED: TOO SLOW": {
@@ -803,6 +808,86 @@
           "stargate @ main"
         ]
       },
+      "TheStove": {
+        "Race": "Protoss",
+        "OpeningGroup": "arbiters",
+        "OpeningBuildOrder": [
+          "pylon @ main",
+          "5 x probe",
+          "go scout",
+          "gateway",
+          "2 x probe",
+          "assimilator",
+          "3 x probe",
+          "gateway",
+          "pylon @ main",
+          "cybernetics core",
+          "2 x zealot",
+          "stargate @ main",
+          "3 x probe",
+          "pylon @ main",
+          "scout",
+          "3 x probe",
+          "go aggressive",
+          "assimilator",
+          "singularity charge",
+          "2 x dragoon",
+          "4 x probe",
+          "pylon @ natural",
+          "citadel of adun",
+          "nexus @ natural",
+          "4 x probe",
+          "gateway",
+          "templar archives",
+          "2 x dark templar",
+          "4 x probe",
+          "pylon @ main",
+          "2 x dragoon",
+          "arbiter tribunal",
+          "2 x dark templar",
+          "arbiter",
+          "stasis field",
+          "arbiter",
+          "gateway"
+        ]
+      },
+      "CorsairZealot": {
+        "Race": "Protoss",
+        "OpeningGroup": "zealots",
+        "OpeningBuildOrder": [
+          "go defensive",
+          "4 x probe",
+          "pylon",
+          "probe",
+          "go scout",
+          "probe",
+          "gateway",
+          "2 x probe",
+          "gateway",
+          "probe",
+          "zealot",
+          "pylon",
+          "2 x probe",
+          "2 x zealot",
+          "probe",
+          "assimilator",
+          "pylon",
+          "probe",
+          "cybernetics core",
+          "probe",
+          "2 x zealot",
+          "probe",
+          "stargate",
+          "2 x probe",
+          "citadel of adun",
+          "pylon",
+          "probe",
+          "2 x zealot",
+          "corsair",
+          "2 x probe",
+          "leg enhancements"
+        ]
+      },
       "21Nexus": {
         "Race": "Protoss",
         "OpeningGroup": "dragoons",
@@ -827,11 +912,6 @@
         "Race": "Protoss",
         "OpeningGroup": "dark templar",
         "OpeningBuildOrder": [ "go defensive", "4 x probe", "pylon", "probe", "go scout", "probe", "gateway", "2 x probe", "assimilator", "probe", "zealot", "cybernetics core", "probe", "pylon", "zealot", "probe", "stargate", "probe", "citadel of adun", "probe", "zealot", "corsair", "2 x probe", "templar archives", "gateway" ]
-      },
-      "CorsairZealot": {
-        "Race": "Protoss",
-        "OpeningGroup": "zealots",
-        "OpeningBuildOrder": [ "go defensive", "4 x probe", "pylon", "probe", "go scout", "probe", "gateway", "2 x probe", "gateway", "probe", "zealot", "pylon", "2 x probe", "2 x zealot", "probe", "assimilator", "pylon", "probe", "cybernetics core", "probe", "2 x zealot", "probe", "stargate", "2 x probe", "citadel of adun", "pylon", "probe", "2 x zealot", "corsair", "2 x probe", "leg enhancements" ]
       },
       "CorsairZealotDT": {
         "Race": "Protoss",
