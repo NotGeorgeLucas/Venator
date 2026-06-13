@@ -517,7 +517,7 @@ void Squad::moveCluster(const UnitCluster & cluster, const BWAPI::Position & des
             unit->getType() != BWAPI::UnitTypes::Protoss_Arbiter &&
             !_microDefilers.getUnits().contains(unit))      // defilers plus defiler food
         {
-            if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() == BWAPI::Races::Zerg) continue;
+            //if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() != BWAPI::Races::Zerg) continue;
             if (!UnitUtil::MobilizeUnit(unit))
             {
                 if (lazy)
@@ -569,7 +569,7 @@ void Squad::safeMoveCluster(const UnitCluster & cluster, const BWAPI::Position &
             unit->getType() != BWAPI::UnitTypes::Protoss_Arbiter &&
             !_microDefilers.getUnits().contains(unit))      // defilers plus defiler food
         {
-            if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() == BWAPI::Races::Zerg) continue;
+            //if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() != BWAPI::Races::Zerg) continue;
             if (!UnitUtil::MobilizeUnit(unit))
             {
 				if (_order.getBase())

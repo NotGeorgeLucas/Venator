@@ -307,6 +307,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     if ((!canDWeb(airUnit) && moveDist >= 48) || (canDWeb(airUnit) && moveDist >= 4 * 32)) {
                         if (!shouldDWeb && !shouldSupportDWeb) {
                             the.micro.Move(airUnit, moveTarget);
+                            BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Move to escort");
                             continue;
                         }
                     }
@@ -315,6 +316,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     if (the.bases.myMain() && the.bases.myMain()->getPosition().isValid()) {
                         // Retreat to main as final fallback
                         the.micro.MoveNear(airUnit, the.bases.myMain()->getPosition());
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Fall back to base");
                         continue;
                     }
                 }
@@ -439,6 +441,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                             the.micro.Move(airUnit, dwebPos);
                         }
 
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Webbing selfishly");
                         BWAPI::Broodwar->drawBoxMap(dwebPos.x - 60, dwebPos.y - 40, dwebPos.x + 60, dwebPos.y + 40, BWAPI::Colors::Blue);
 
                     }
@@ -453,6 +456,8 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                         else {
                             the.micro.Move(airUnit, supDWebPos);
                         }
+
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Webbing support");
                         BWAPI::Broodwar->drawBoxMap(supDWebPos.x - 60, supDWebPos.y - 40, supDWebPos.x + 60, supDWebPos.y + 40, BWAPI::Colors::Blue);
 
                     }
@@ -465,7 +470,8 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                             // Clamp to map bounds
                             fleeTo.x = std::max(0, std::min(fleeTo.x, mapW - 1));
                             fleeTo.y = std::max(0, std::min(fleeTo.y, mapH - 1));
-                                
+
+                            BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Running away from threat");
                             the.micro.Move(airUnit, fleeTo);
                         }
                     }
@@ -490,6 +496,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                         }
 
                         BWAPI::Broodwar->drawBoxMap(dwebPos.x - 60, dwebPos.y - 40, dwebPos.x + 60, dwebPos.y + 40, BWAPI::Colors::Blue);
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Webbing selfishly");
                     }
                     else if (shouldSupportDWeb) {
 
@@ -504,6 +511,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                         }
 
                         BWAPI::Broodwar->drawBoxMap(supDWebPos.x - 60, supDWebPos.y - 40, supDWebPos.x + 60, supDWebPos.y + 40, BWAPI::Colors::Blue);
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Webbing support");
                     }
                     else {
 
@@ -523,6 +531,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                         }
 
                         the.micro.Move(airUnit, kitePos);
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Move into attack position");
                     }
 
                     continue;
@@ -537,6 +546,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
                     if (atSafeAttackPoint && canHitTarget) {
                         the.micro.AttackUnit(airUnit, target);
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Attack safely");
                         continue;
                     }
 
@@ -562,6 +572,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     // Go kill things if we're safe
                     if (safeToMove) {
                         the.micro.CatchAndAttackUnit(airUnit, target);
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Attack safely");
                     }
                     else {
                         BWAPI::Position start = airUnit->getPosition();
@@ -573,6 +584,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
                         if (dir == BWAPI::Position(0, 0)) {
                             the.micro.AttackUnit(airUnit, target);
+                            BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Attack safely");
                             continue;
                         }
 
@@ -619,14 +631,15 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
 
                         if (bestScore != INT_MIN) {
                             the.micro.Move(airUnit, bestMove);
+                            BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Dodge threat");
                             moved = true;
                         }
 
                         if (!moved) {
 
-                            if (isHunter && hasVisitedBase[airUnit])
-                            {
+                            if (isHunter && hasVisitedBase[airUnit]) {
                                 handleHunterPatrol(airUnit, enemyBase, enemyNatural);
+                                BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Patrol mode");
                                 continue;
                             }
 
@@ -636,22 +649,30 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     }
                 }
             }
-            else
-            {
+            else {
                 // No target found. Go to the attack position.
 
 
-                if (isHunter && hasVisitedBase[airUnit])
-                {
+                if (isHunter && hasVisitedBase[airUnit]) {
                     handleHunterPatrol(airUnit, enemyBase, enemyNatural);
                 }
-                else
-                {
-                    if (the.enemyRace() == BWAPI::Races::Zerg || !hasGroundSupport(airUnit)) {
-                        the.micro.AttackMove(airUnit, order->getPosition());
+                else {
+
+                    BWAPI::Position goal = order ? order->getPosition() : BWAPI::Positions::Invalid;
+
+                    if (!goal.isValid()) {
+                        goal = the.bases.enemyStart() ? the.bases.enemyStart()->getPosition() : BWAPI::Position(0, 0);
+                    }
+
+                    if (the.enemyRace() == BWAPI::Races::Zerg || (!hasGroundSupport(airUnit) && !threatVector.empty())) {
+                        the.micro.AttackMove(airUnit, goal);
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Attack-move to order");
+                        continue;
                     }
                     else {
                         the.micro.HoldPosition(airUnit);
+                        BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Holding position");
+                        continue;
                     }
 
                 }
@@ -783,7 +804,8 @@ std::vector<MicroAirToAir::Threat> MicroAirToAir::computeThreats(BWAPI::Unit & a
         if (ui.lastPosition.getDistance(airUnit->getPosition()) > 10 * 32)  continue;
 
 
-        bool isThreat = ((!u->isFlying() && u->getType().airWeapon() != BWAPI::WeaponTypes::None) || (u->getBuildType() && u->getBuildType() == BWAPI::UnitTypes::Zerg_Spore_Colony)) && !u->isUnderDisruptionWeb();
+        bool isThreat = ((!u->isFlying() && u->getType().airWeapon() != BWAPI::WeaponTypes::None) || (u->getBuildType() && u->getBuildType() == BWAPI::UnitTypes::Zerg_Spore_Colony))
+            && !u->isUnderDisruptionWeb() && !u->isStasised() && !u->isMaelstrommed();
 
         if (!isThreat) continue;
 
@@ -938,7 +960,7 @@ void MicroAirToAir::handleHunterPatrol(BWAPI::Unit airUnit, const BWAPI::Positio
 
 
 // Returns invalid position if there's no way to cover all threats in DWeb
-BWAPI::Position MicroAirToAir::netForAllThreats(std::vector<Threat> threats) {
+BWAPI::Position MicroAirToAir::netForAllThreats(const std::vector<Threat> threats) {
     BWAPI::Position webPos = BWAPI::Positions::Invalid;
 
     if (threats.size() <= 0) { return webPos; }
@@ -951,7 +973,10 @@ BWAPI::Position MicroAirToAir::netForAllThreats(std::vector<Threat> threats) {
     const int netWidth = 120;
     const int netHeight = 80;
 
-    for (Threat& t : threats) {
+    for (const Threat& t : threats) {
+
+        if (t.type.isBuilding() && !t.isFinished) continue;
+
         BWAPI::Position p = t.predictedPos;
         
         int halfW = t.type.width() / 2;
@@ -975,20 +1000,8 @@ BWAPI::Position MicroAirToAir::netForAllThreats(std::vector<Threat> threats) {
         webPos.y = (minY + maxY) / 2;
     }
 
-
-    std::vector<Threat> staticThreats;
-
-    for (Threat& t : threats) {
-        if (t.type.isBuilding()) {
-            staticThreats.push_back(t);
-        }
-    }
-    if (webPos.isValid() || threats.size() == staticThreats.size()) {
-        return webPos;
-    }
-    else {
-        return netForAllThreats(staticThreats);
-    }
+    return webPos;
+    
 }
 
 

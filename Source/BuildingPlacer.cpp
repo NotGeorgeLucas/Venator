@@ -609,8 +609,7 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
 }
 
 /* CODE ADDED */
-BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b)
-{
+BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b) {
     BWAPI::TilePosition natStart = the.bases.myNatural()->getTilePosition();
     BWAPI::TilePosition frontStart = the.bases.myNatural()->findFront();
 
@@ -626,10 +625,8 @@ BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b)
     else { isOnAxisX = false; }
 
     // Try a 9x9 area in around the starting point
-    for (int dx = -4; dx <= 4; ++dx)
-    {
-        for (int dy = -4; dy <= 4; ++dy)
-        {
+    for (int dx = -4; dx <= 4; ++dx) {
+        for (int dy = -4; dy <= 4; ++dy) {
             BWAPI::TilePosition candidate;
             if (isOnAxisX) {
                 candidate = start + BWAPI::TilePosition(dx, dy);
@@ -655,19 +652,16 @@ BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b)
     return findGroupedLocation(b);
 }
 
-BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) const
-{
+BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) const {
     BWAPI::TilePosition forgeTile = getNearestBuildingTile(the.bases.frontTile(), BWAPI::UnitTypes::Protoss_Forge);
 
     BWAPI::TilePosition start;
-    if (forgeTile != BWAPI::TilePositions::None)
-    {
+    if (forgeTile != BWAPI::TilePositions::None) {
         BWAPI::TilePosition natPos = the.bases.myNatural()->getTilePosition();
         if (forgeTile.getDistance(natPos) >= 15) { return findGroupedLocation(b); }
         start = forgeTile + (natPos - forgeTile) / 2;
     }
-    else
-    {
+    else {
         return findGroupedLocation(b);
     }
 
@@ -675,10 +669,9 @@ BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) const
     double bestScore = INT_MIN;
 
     // Scan 7x7 grid around the in-between point of the forge and the natural
-    for (int dx = -3; dx <= 3; ++dx)
-    {
-        for (int dy = -3; dy <= 3; ++dy)
-        {
+    for (int dx = -3; dx <= 3; ++dx) {
+        for (int dy = -3; dy <= 3; ++dy) {
+
             BWAPI::TilePosition t = start + BWAPI::TilePosition(dx, dy);
             if (!t.isValid()) continue;
             if (!canBuildWithSpace(t, b, 0)) continue;
@@ -687,16 +680,14 @@ BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) const
             double forgeDist = forgeTile.getDistance(t);
 
             double score = getDistanceToClosestMineral(forgeTile) - forgeDist * 32 * 0.75f;
-            if (score > bestScore)
-            {
+            if (score > bestScore) {
                 bestScore = score;
                 bestTile = t;
             }
         }
     }
 
-    if (bestTile != BWAPI::TilePositions::None)
-    {
+    if (bestTile != BWAPI::TilePositions::None) {
         return bestTile;
     }
 

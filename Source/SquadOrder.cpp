@@ -128,7 +128,7 @@ SquadOrder::SquadOrder(SquadOrderTypes type, BWAPI::Position position, int radiu
 // If !useDistances, use the position of the base but don't set _base. We don't want any distances.
 SquadOrder::SquadOrder(SquadOrderTypes type, Base * base, int radius, bool useDistances, const std::string & status) 
     : _type(type)
-    , _position(base->getCenter())
+    , _position(base->getFront() != BWAPI::Positions::None ? base->getFront() : base->getCenter())
     , _base(useDistances ? base : nullptr)
     , _radius(radius)
 	, _raid(false)

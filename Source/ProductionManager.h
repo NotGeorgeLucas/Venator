@@ -63,6 +63,10 @@ class ProductionManager
 
     BWAPI::Unit         getProducer(MacroAct t) const;
 
+
+    int _lostZealotNum = 0;
+    int _lostPylonNum = 0;
+
 public:
 
     static ProductionManager &	Instance();

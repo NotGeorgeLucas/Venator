@@ -19,6 +19,7 @@ private:
         BWAPI::Position predictedPos;
         int range;
         BWAPI::UnitType type;
+        bool isFinished = true;
 
         Threat() = default;
 
@@ -49,6 +50,8 @@ private:
             range = UnitUtil::GetAttackRange(u, target) + 32;
 
             type = ui.type;
+
+            if (type.isBuilding() && !u->isCompleted()) isFinished = false;
         }
     };
 
@@ -162,7 +165,14 @@ public:
     bool hasGroundSupport(BWAPI::Unit unit) const {
         BWAPI::Unitset allies = unit->getUnitsInRadius(8 * 32, BWAPI::Filter::IsAlly && !BWAPI::Filter::IsNeutral && BWAPI::Filter::GroundWeapon != BWAPI::WeaponTypes::None);
 
-        return allies.size() >= 3;
+        if (allies.size() >= 2) {
+
+            BWAPI::Broodwar->drawTextMap(unit->getPosition() + BWAPI::Position(0, 48), "Support mode");
+            return true;
+        }
+
+        BWAPI::Broodwar->drawTextMap(unit->getPosition() + BWAPI::Position(0, 48), "Standalone mode");
+        return false;
     };
 
 
@@ -198,7 +208,7 @@ public:
     BWAPI::Position getBestWebCast(BWAPI::Unit caster, const std::vector<UnitInfo>& targets);
     
     // For selfish webs
-    BWAPI::Position netForAllThreats(std::vector<Threat> threats);
+    BWAPI::Position netForAllThreats(const std::vector<Threat> threats);
     
 
     BWAPI::Unit pickNewHunter(const BWAPI::Unitset& airUnits, BWAPI::Unit exclude1, BWAPI::Unit exclude2, const BWAPI::Position& reference);

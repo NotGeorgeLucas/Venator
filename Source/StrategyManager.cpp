@@ -161,7 +161,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     bool hasCarrierCondition = the.my.completed.count(BWAPI::UnitTypes::Protoss_Stargate) > 0
                             && the.my.completed.count(BWAPI::UnitTypes::Protoss_Fleet_Beacon) > 0;
 
-    bool hasArbiterCondition = the.my.completed.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal) > 1;
+    bool hasArbiterCondition = the.my.completed.count(BWAPI::UnitTypes::Protoss_Arbiter_Tribunal) > 0;
 
     InformationManager im = InformationManager::Instance();
 
@@ -181,6 +181,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
 
     if (the.enemyRace() == BWAPI::Races::Zerg && numStargate >= 1) {
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, std::min(numCorsairs + 1, 2)));
+        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + 1));
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Fleet_Beacon, 1));
         goal.push_back(MetaPair(BWAPI::TechTypes::Disruption_Web, 1));
     }

@@ -44,8 +44,31 @@ void ProductionManager::update()
 {
     /* CODE ADDED */
     // Carriers only want to go aggressive once we have a sizeable unit
-    if (_outOfBook && StrategyManager::Instance().getOpeningGroup() == "carriers" && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 4) {
-        CombatCommander::Instance().setAggression(true);
+    if (_outOfBook) {
+        if ((StrategyManager::Instance().getOpeningGroup() == "carriers" && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 4)
+            || StrategyManager::Instance().getOpeningGroup() != "carriers") {
+            CombatCommander::Instance().setAggression(true);
+        }
+    }
+
+    /* CODE ADDED */
+    // Build zealots pylons if they get killed
+    if (the.selfRace() == BWAPI::Races::Protoss) {
+        if (_lostZealotNum > 0 && the.my.completed.count(BWAPI::UnitTypes::Protoss_Probe) >= 5) {
+            
+            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Zealot, 10)) {
+                _queue.queueAsHighestPriority(BWAPI::UnitTypes::Protoss_Zealot);
+                _lostZealotNum--;
+            }
+        }
+
+        if (_lostPylonNum > 0 && the.my.completed.count(BWAPI::UnitTypes::Protoss_Probe) >= 5) {
+
+            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Pylon, 3)) {
+                _queue.queueAsHighestPriority(BWAPI::UnitTypes::Protoss_Pylon);
+                _lostPylonNum--;
+            }
+        }
     }
 
     // TODO make it more precise; it normally goes a little over
@@ -94,6 +117,10 @@ void ProductionManager::update()
     manageBuildOrderQueue();
 }
 
+
+/* CODE ADDED */
+// Remake zealots in the opening if we need to and have workers
+
 // If something important was destroyed, we may want to react.
 void ProductionManager::onUnitDestroy(BWAPI::Unit unit)
 {
@@ -102,7 +129,16 @@ void ProductionManager::onUnitDestroy(BWAPI::Unit unit)
     {
         return;
     }
-    
+
+    if (!isOutOfBook() && the.selfRace() == BWAPI::Races::Protoss) {
+        if (unit->getType() == BWAPI::UnitTypes::Protoss_Zealot) {
+            _lostZealotNum++;
+        }
+        else if (unit->getType() == BWAPI::UnitTypes::Protoss_Pylon) {
+            _lostPylonNum++;
+        }
+    }
+
     // If we're zerg, we break out of the opening in narrow cases.
     if (the.selfRace() == BWAPI::Races::Zerg && !isOutOfBook())
     {

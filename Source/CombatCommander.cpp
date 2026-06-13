@@ -1999,7 +1999,7 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
     }
 
     // If the squad has no combat units, or is unable to attack, return home.
-    if (!hasGround && !hasAir || !canAttackGround && !canAttackAir)
+    if ((!hasGround && !hasAir) || (!canAttackGround && !canAttackAir))
     {
         returnBase = the.bases.myMain();
         returnKey = "nothing";
@@ -2181,7 +2181,7 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
 
     /* CODE ADDED */
     // Pure AirToAir units should prefer to attack main if we don't have vision there and there isn't a spore there
-    if (!canAttackGround && canAttackAir && !hasGround) {
+    if (the.enemyRace() == BWAPI::Races::Zerg && !canAttackGround && canAttackAir && hasAir) {
         Base* enemyMain = the.bases.enemyStart();
         if (enemyMain && the.enemyRace() == BWAPI::Races::Zerg) {
             bool mainHatcheryVisible = false;
@@ -2197,9 +2197,22 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
                         u->isVisible() &&
                         u->getDistance(enemyMain->getCenter()) < 15 * 32)
                     {
+                        BWAPI::Broodwar->drawBoxMap(
+                            u->getPosition().x - u->getType().width() / 2 - 8,
+                            u->getPosition().y - u->getType().height() / 2 - 8,
+                            u->getPosition().x + u->getType().width() / 2 + 8,
+                            u->getPosition().y + u->getType().height() / 2 + 8,
+                            BWAPI::Colors::Blue, false);
+
                         mainHatcheryVisible = true;
                     }
-                    if (u->getType() == BWAPI::UnitTypes::Zerg_Spore_Colony && u->getDistance(enemyMain->getCenter()) < 10 * 32) {
+                    if (u->getType() == BWAPI::UnitTypes::Zerg_Spore_Colony && !the.self()->hasResearched(BWAPI::TechTypes::Disruption_Web) && u->getDistance(enemyMain->getCenter()) < 10 * 32) {
+                        BWAPI::Broodwar->drawBoxMap(
+                            u->getPosition().x - u->getType().width() / 2,
+                            u->getPosition().y - u->getType().height() / 2,
+                            u->getPosition().x + u->getType().width() / 2,
+                            u->getPosition().y + u->getType().height() / 2,
+                            BWAPI::Colors::Red, false);
                         isDefended = true;
                     }
                 }

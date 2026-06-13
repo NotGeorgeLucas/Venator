@@ -284,8 +284,7 @@ BWAPI::Position MicroRanged::computeCarrierVector(BWAPI::Unit carrier, const std
     double sumX = 0.0;
     double sumY = 0.0;
 
-    for (const auto& [unit, priority] : targets)
-    {
+    for (const auto& [unit, priority] : targets) {
         if (!unit || !unit->exists()) continue;
 
         BWAPI::Position diff = unit->getPosition() - origin;
@@ -301,8 +300,7 @@ BWAPI::Position MicroRanged::computeCarrierVector(BWAPI::Unit carrier, const std
         // Threat detection (very rough)
         bool isThreat = false;
 
-        switch (unit->getType())
-        {
+        switch (unit->getType()) {
             // Terran
             case BWAPI::UnitTypes::Terran_Goliath:
             case BWAPI::UnitTypes::Terran_Wraith:
@@ -335,8 +333,7 @@ BWAPI::Position MicroRanged::computeCarrierVector(BWAPI::Unit carrier, const std
                 break;
         }
 
-        if (isThreat)
-        {
+        if (isThreat) {
             // Repel instead of attract
             weight *= -0.5;
         }
