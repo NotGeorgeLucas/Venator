@@ -32,6 +32,7 @@ The::The()
 void The::initialize()
 {
     _selfRace = BWAPI::Broodwar->self()->getRace();
+    initializeBWEM();
 
     // The order of initialization is important because of dependencies.
     partitions.initialize();
@@ -150,6 +151,33 @@ void The::update()
 
 	maybeStartAirTasks();
 }
+
+
+/* CODE ADDED */
+// BWEM
+void The::initializeBWEM() {
+
+
+    try {
+        BWAPI::Broodwar << "Map initialization..." << std::endl;
+
+        BWEMMap.Initialize();
+        BWEMMap.EnableAutomaticPathAnalysis();
+        bool startingLocationsOK = BWEMMap.FindBasesForStartingLocations();
+        assert(startingLocationsOK);
+
+        BWEM::utils::MapPrinter::Initialize(&BWEMMap);
+        BWEM::utils::printMap(BWEMMap);      // will print the map into the file <StarCraftFolder>bwapi-data/map.bmp
+        BWEM::utils::pathExample(BWEMMap);   // add to the printed map a path between two starting locations
+
+        BWAPI::Broodwar << "Map Initialized!" << std::endl;
+    }
+    catch (const std::exception& e) {
+        BWAPI::Broodwar << "EXCEPTION: " << e.what() << std::endl;
+    }
+
+}
+
 
 OpponentModel & The::oppModel()
 {

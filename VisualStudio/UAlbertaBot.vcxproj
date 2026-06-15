@@ -129,10 +129,31 @@
     <ClCompile Include="..\source\BuildingPlacer.cpp" />
     <ClCompile Include="..\source\BuildOrder.cpp" />
     <ClCompile Include="..\source\BuildOrderQueue.cpp" />
+    <ClCompile Include="..\Source\BWEM\area.cpp" />
+    <ClCompile Include="..\Source\BWEM\base.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)BWEM_base.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)BWEM_base.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\Source\BWEM\bwapiExt.cpp" />
+    <ClCompile Include="..\Source\BWEM\bwem.cpp" />
+    <ClCompile Include="..\Source\BWEM\cp.cpp" />
+    <ClCompile Include="..\Source\BWEM\examples.cpp" />
+    <ClCompile Include="..\Source\BWEM\exampleWall.cpp" />
+    <ClCompile Include="..\Source\BWEM\graph.cpp" />
+    <ClCompile Include="..\Source\BWEM\gridMap.cpp" />
+    <ClCompile Include="..\Source\BWEM\map.cpp" />
+    <ClCompile Include="..\Source\BWEM\mapDrawer.cpp" />
+    <ClCompile Include="..\Source\BWEM\mapImpl.cpp" />
+    <ClCompile Include="..\Source\BWEM\mapPrinter.cpp" />
+    <ClCompile Include="..\Source\BWEM\neutral.cpp" />
+    <ClCompile Include="..\Source\BWEM\tiles.cpp" />
+    <ClCompile Include="..\Source\BWEM\utils.cpp" />
+    <ClCompile Include="..\Source\BWEM\winutils.cpp" />
     <ClCompile Include="..\Source\CombatSimulation.cpp" />
     <ClCompile Include="..\Source\CombatCommander.cpp" />
     <ClCompile Include="..\Source\Common.cpp" />
     <ClCompile Include="..\Source\Dll.cpp" />
+    <ClCompile Include="..\Source\EasyBMP_1.06\EasyBMP.cpp" />
     <ClCompile Include="..\Source\FAP.cpp" />
     <ClCompile Include="..\Source\GameCommander.cpp" />
     <ClCompile Include="..\Source\GameRecord.cpp" />
@@ -225,10 +246,32 @@
     <ClInclude Include="..\source\BuildingPlacer.h" />
     <ClInclude Include="..\source\BuildOrder.h" />
     <ClInclude Include="..\source\BuildOrderQueue.h" />
+    <ClInclude Include="..\Source\BWEM\area.h" />
+    <ClInclude Include="..\Source\BWEM\base.h" />
+    <ClInclude Include="..\Source\BWEM\bwapiExt.h" />
+    <ClInclude Include="..\Source\BWEM\bwem.h" />
+    <ClInclude Include="..\Source\BWEM\cp.h" />
+    <ClInclude Include="..\Source\BWEM\defs.h" />
+    <ClInclude Include="..\Source\BWEM\examples.h" />
+    <ClInclude Include="..\Source\BWEM\exampleWall.h" />
+    <ClInclude Include="..\Source\BWEM\graph.h" />
+    <ClInclude Include="..\Source\BWEM\gridMap.h" />
+    <ClInclude Include="..\Source\BWEM\map.h" />
+    <ClInclude Include="..\Source\BWEM\mapDrawer.h" />
+    <ClInclude Include="..\Source\BWEM\mapImpl.h" />
+    <ClInclude Include="..\Source\BWEM\mapPrinter.h" />
+    <ClInclude Include="..\Source\BWEM\neutral.h" />
+    <ClInclude Include="..\Source\BWEM\tiles.h" />
+    <ClInclude Include="..\Source\BWEM\utils.h" />
+    <ClInclude Include="..\Source\BWEM\winutils.h" />
     <ClInclude Include="..\Source\CombatSimulation.h" />
     <ClInclude Include="..\Source\CombatCommander.h" />
     <ClInclude Include="..\Source\Common.h" />
     <ClInclude Include="..\Source\DistanceMap.hpp" />
+    <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP.h" />
+    <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP_BMP.h" />
+    <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP_DataStructures.h" />
+    <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP_VariousBMPutilities.h" />
     <ClInclude Include="..\Source\FAP.h" />
     <ClInclude Include="..\Source\GameCommander.h" />
     <ClInclude Include="..\Source\GameRecord.h" />
@@ -310,6 +353,13 @@
     <ClInclude Include="..\Source\UnitUtil.h" />
     <ClInclude Include="..\source\WorkerData.h" />
     <ClInclude Include="..\source\WorkerManager.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\Source\EasyBMP_1.06\BSD_(revised)_license.txt" />
+    <Text Include="..\Source\EasyBMP_1.06\EasyBMP_ChangeLog.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Source\EasyBMP_1.06\EasyBMP_UserManual.pdf" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

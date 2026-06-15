@@ -1069,7 +1069,7 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
 
         if (!ui.lastPosition.isValid()) continue;
 
-        if (cluster.center.getDistance(ui.lastPosition) < 10 * 32)
+        if (cluster.center.getDistance(ui.lastPosition) < 13 * 32)
         {
             enemyCount+= !ui.type.isWorker(); // We don't care about workers for this case
 
@@ -1089,7 +1089,7 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     {
         if (u->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon && u->isPowered())
         {
-            if (cluster.center.getDistance(u->getPosition()) < 8 * 32)
+            if (cluster.center.getDistance(u->getPosition()) < 13 * 32)
             {
                 nearStaticDef = true;
                 break;

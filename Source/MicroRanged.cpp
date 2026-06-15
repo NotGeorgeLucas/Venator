@@ -429,6 +429,7 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
 
             if (!ui.unit || !ui.unit->exists()) continue;
             if (ui.goneFromLastPosition) continue;
+            if (ui.lastPosition.getApproxDistance(carrier->getPosition()) >= 35 * 32) continue;
 
             if (ui.isCompleted() && ui.powered)
             {
@@ -464,6 +465,8 @@ bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target) {
 
     return !lastTarget ||
         !lastTarget->exists() ||
+        lastTarget->getDistance(unit) >= 10 * 32 ||
+        target->getDistance(unit) >= 10 * 32 ||
         getAttackPriority(unit, target) > getAttackPriority(unit, lastTarget);
 }
 

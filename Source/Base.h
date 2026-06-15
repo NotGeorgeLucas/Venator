@@ -5,6 +5,8 @@
 #include "GridDistances.h"
 #include "GridSafePath.h"
 
+#include "BWEM/cp.h"
+
 namespace UAlbertaBot
 {
 class Base
@@ -157,6 +159,8 @@ public:
     void clearBlocker(BWAPI::Unit blocker);
 
     void drawBaseInfo() const;
+
+    const BWEM::ChokePoint* getBaseChokepoint() const;
 };
 
 }

@@ -1041,7 +1041,7 @@ BWAPI::Position MicroAirToAir::getBestWebCast(BWAPI::Unit caster, const std::vec
             }
         }
 
-        if (score > bestScore && score >= 20) {
+        if (score > bestScore && score >= 25) {
             bestScore = score;
 
             bestPos = centerUnit->getPosition();
@@ -1057,6 +1057,7 @@ int MicroAirToAir::getEnemyWebValue(BWAPI::Unit caster, BWAPI::Unit target) {
     if (target->isFlying() || !target->canAttack() || target->getType().isWorker()) return 0;
     if (target->isStasised() || target->isUnderDisruptionWeb() || target->isMaelstrommed()) return 0;
     if (target->getType().isBuilding() && !target->isCompleted()) return 0;
+    if (target->getType() == BWAPI::UnitTypes::Terran_Vulture_Spider_Mine) return 0;
 
     using namespace BWAPI::UnitTypes;
 

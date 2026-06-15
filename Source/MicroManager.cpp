@@ -490,7 +490,16 @@ bool MicroManager::unitNearChokepoint(BWAPI::Unit unit) const
 {
     UAB_ASSERT(unit, "bad unit");
 
-    return the.tileRoom.at(unit->getTilePosition()) <= 12;
+    for (BWEM::Area a : BWEMMap.Areas()) {
+        for (const BWEM::ChokePoint * choke : a.ChokePoints()) {
+            if (BWAPI::Position(choke->Pos(BWEM::ChokePoint::middle)).getApproxDistance(unit->getPosition()) <= 2 * 32)
+                return true;
+        }
+    }
+
+    return false;
+
+    //return the.tileRoom.at(unit->getTilePosition()) <= 12;
 }
 
 // Dodge any incoming spider mine.

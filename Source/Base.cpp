@@ -631,4 +631,82 @@ void Base::drawBaseInfo() const
             "%cblockers: %c%d",
             red, cyan, blockers.size());
     }
+
+
+    /* CODE ADDED */
+    // BWEM Choke
+
+    const BWEM::ChokePoint * choke = getBaseChokepoint();
+
+    BWAPI::Broodwar->drawLineMap(BWAPI::Position(front) + BWAPI::Position(16, 16), BWAPI::Position(choke->Pos(BWEM::ChokePoint::middle)), BWAPI::Colors::Blue);
+    
+    int x1 = BWAPI::Position(choke->Pos(BWEM::ChokePoint::end1)).x;
+    int x2 = BWAPI::Position(choke->Pos(BWEM::ChokePoint::end2)).x;
+    int y1 = BWAPI::Position(choke->Pos(BWEM::ChokePoint::end1)).y;
+    int y2 = BWAPI::Position(choke->Pos(BWEM::ChokePoint::end2)).y;
+
+    int minX = std::min(x1, x2);
+    int maxX = std::max(x1, x2);
+
+    int minY = std::min(y1, y2);
+    int maxY = std::max(y1, y2);
+
+    BWAPI::Broodwar->drawBoxMap(minX, minY, maxX, maxY, BWAPI::Colors::Blue);
+}
+
+
+/* CODE ADDED */
+// BWEM integration
+const BWEM::ChokePoint* Base::getBaseChokepoint() const {
+    const BWAPI::Position center = BWAPI::Position(getCenterTile());
+    const BWAPI::Position front = BWAPI::Position(getFront());
+
+    const BWAPI::Position forward = front - center;
+    const double forwardLen = std::hypot((double)forward.x, (double)forward.y);
+
+    const BWEM::ChokePoint* bestChoke = nullptr;
+    double bestScore = std::numeric_limits<double>::infinity();
+
+    // Bigger = more directional bias
+    constexpr double directionPenalty = 0.55;
+
+    bool isNatural = the.bases.myNatural() && the.bases.myNatural()->getCenter() == getCenter();
+
+    for (const BWEM::Area& area : BWEMMap.Areas()) {
+        for (const BWEM::ChokePoint* choke : area.ChokePoints()) {
+            const BWAPI::Position chokePos = BWAPI::Position(choke->Pos(BWEM::ChokePoint::middle));
+
+            // Skip choke at main if this is the natural
+            if (isNatural) {
+                if (BWAPI::Position(the.bases.myStart()->getBaseChokepoint()->Pos(BWEM::ChokePoint::middle)) == chokePos) {
+                    continue;
+                }
+            }
+
+            const double dist = (double)front.getDistance(chokePos);
+
+            double score = dist;
+
+            if (forwardLen > 0.0) {
+                const BWAPI::Position toChoke = chokePos - center;
+                const double toLen = std::hypot((double)toChoke.x, (double)toChoke.y);
+
+                if (toLen > 0.0) {
+
+                    const double dot = (double)toChoke.x * (double)forward.x + (double)toChoke.y * (double)forward.y;
+
+                    const double cosine = dot / (toLen * forwardLen);
+                    // cosine: 1.0 = exactly toward front, 0.0 = sideways, -1.0 = behind
+                    score = dist * (1.0 + directionPenalty * (1.0 - cosine));
+                }
+            }
+
+            if (score < bestScore) {
+                bestScore = score;
+                bestChoke = choke;
+            }
+        }
+    }
+
+    return bestChoke;
 }

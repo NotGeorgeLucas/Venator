@@ -533,7 +533,17 @@ void GameCommander::onUnitDestroy(BWAPI::Unit unit)
 { 	
     ProductionManager::Instance().onUnitDestroy(unit);
     WorkerManager::Instance().onUnitDestroy(unit);
-    InformationManager::Instance().onUnitDestroy(unit); 
+    InformationManager::Instance().onUnitDestroy(unit);
+
+    /* CODE ADDED */
+    // BWEM Shenanigans
+    try {
+        if (unit->getType().isMineralField())           BWEMMap.OnMineralDestroyed(unit);
+        else if (unit->getType().isSpecialBuilding())   BWEMMap.OnStaticBuildingDestroyed(unit);
+    }
+    catch (const std::exception& e) {
+        BWAPI::Broodwar << "EXCEPTION: " << e.what() << std::endl;
+    }
 }
 
 void GameCommander::onUnitMorph(BWAPI::Unit unit)		

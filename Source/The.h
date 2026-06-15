@@ -16,6 +16,10 @@
 #include "SkillKit.h"
 #include "Tasks.h"
 
+
+#include "BWEM/bwem.h"
+namespace { auto& BWEMMap = BWEM::Map::Instance(); }
+
 // Central access to many components.
 #define the (The::Root())
 
@@ -50,6 +54,8 @@ namespace UAlbertaBot
 		bool _airTasksStarted;
 
 		void maybeStartAirTasks();
+
+        void initializeBWEM();
 
     public:
         The();

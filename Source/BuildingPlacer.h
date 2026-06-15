@@ -45,16 +45,18 @@ class BuildingPlacer
 
     /* CODE ADDED */
     BWAPI::TilePosition findForgeLocation(const Building& b);
-    BWAPI::TilePosition findCanonLocation(const Building& b) const;
+    BWAPI::TilePosition findCanonLocation(const Building& b);
     BWAPI::TilePosition findSafeLocation(const Building& b);
     BWAPI::TilePosition getNearestBuildingTile(const BWAPI::TilePosition& tile, const BWAPI::UnitType) const;
+    BWAPI::TilePosition findClosestBuildTile(BWAPI::Position center, BWAPI::UnitType build, BWAPI::Position backAnchor);
+    BWAPI::TilePosition findBestFFEPylon(BWAPI::TilePosition forge, BWAPI::TilePosition start, BWAPI::TilePosition backDir);
     bool isWallAdjacent(const BWAPI::TilePosition& tile, const BWAPI::UnitType& building) const;
     int getDistanceToClosestMineral(const BWAPI::TilePosition& tile) const;
     bool tileHasBuilding(int x, int y) const;
-    bool wallsOnTop(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
-    bool wallsOnRight(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
-    bool wallsOnLeft(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
-    bool wallsOnBottom(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const;
+    bool wallsOnTop(const BWAPI::TilePosition& tile) const;
+    bool wallsOnRight(const BWAPI::TilePosition& tile) const;
+    bool wallsOnLeft(const BWAPI::TilePosition& tile) const;
+    bool wallsOnBottom(const BWAPI::TilePosition& tile) const;
 
     struct MapBox {
         int x, y, w, h;
@@ -74,6 +76,75 @@ class BuildingPlacer
     std::vector<MapCircle> circlesToDraw = {};
 
     int     countInRange(const BWAPI::Unitset & units, BWAPI::Position xy, int range) const;
+
+
+
+    struct FFEPlaces {
+
+        struct PotentialLoc {
+            BWAPI::TilePosition origin;
+            int w; int h;
+
+            void draw() {
+                BWAPI::Position originPos(origin);
+                BWAPI::Broodwar->drawBoxMap(originPos.x, originPos.y, originPos.x + w * 32, originPos.y + h * 32, BWAPI::Colors::Grey);
+
+                for (int dx = 0; dx <= w; dx++) {
+                    for (int dy = 0; dy <= h; dy++) {
+                        drawSubtile(origin + BWAPI::TilePosition(dx, dy));
+                    }
+                }
+            }
+
+            void drawSubtile(BWAPI::TilePosition tile) {
+                BWAPI::Position p(tile);
+                for (int dx = 0; dx < w; dx++) {
+                    for (int dy = 0; dy < h; dy++) {
+                        BWAPI::TilePosition t(origin.x + dx, origin.y + dy);
+
+                        BWAPI::Position p(t);
+
+                        BWAPI::Broodwar->drawBoxMap(p.x + 4, p.y + 4, p.x + 32 - 4, p.y + 32 - 4, BWAPI::Colors::Grey);
+                    }
+                }
+            }
+        };
+
+
+        PotentialLoc forgePlan;
+        PotentialLoc pylonPlan;
+
+    };
+    
+    std::unique_ptr<FFEPlaces> myNatFFEPlaces = nullptr;
+    void InitializeFFE();
+
+    bool pylonPowersForge(BWAPI::TilePosition pylon, BWAPI::TilePosition forge) {
+        const int dx = forge.x - pylon.x;
+        const int dy = forge.y - pylon.y;
+
+        switch (dy) {
+            case -4:
+            case  3:
+                return dx >= -6 && dx <= 5;
+
+            case -3:
+            case  2:
+                return dx >= -7 && dx <= 6;
+
+            case -2:
+            case -1:
+            case  0:
+            case  1:
+                return dx >= -7 && dx <= 7;
+
+            case  4:
+                return dx >= -3 && dx <= 2;
+
+            default:
+                return false;
+        }
+    }
 
 public:
 

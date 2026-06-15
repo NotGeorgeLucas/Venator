@@ -583,7 +583,14 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
         }
     }
     else if (b.type == BWAPI::UnitTypes::Protoss_Pylon) {
-        BWAPI::TilePosition tile = findPylonlessBaseLocation(b);
+        if (b.macroLocation == MacroLocation::Expo) {
+            if (myNatFFEPlaces && myNatFFEPlaces->forgePlan.origin.isValid() && myNatFFEPlaces->pylonPlan.origin.isValid()) {
+                tile = myNatFFEPlaces->pylonPlan.origin;
+            }
+        }
+        else {
+            BWAPI::TilePosition tile = findPylonlessBaseLocation(b);
+        }
     }
     /* CODE ADDED */
     else if (b.type == BWAPI::UnitTypes::Protoss_Forge && b.macroLocation == MacroLocation::Front) {
@@ -610,6 +617,11 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
 
 /* CODE ADDED */
 BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b) {
+
+    if (myNatFFEPlaces && myNatFFEPlaces->forgePlan.origin.isValid() && myNatFFEPlaces->pylonPlan.origin.isValid()) {
+        return myNatFFEPlaces->forgePlan.origin;
+    }
+
     BWAPI::TilePosition natStart = the.bases.myNatural()->getTilePosition();
     BWAPI::TilePosition frontStart = the.bases.myNatural()->findFront();
 
@@ -652,34 +664,36 @@ BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b) {
     return findGroupedLocation(b);
 }
 
-BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) const {
+BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) {
     BWAPI::TilePosition forgeTile = getNearestBuildingTile(the.bases.frontTile(), BWAPI::UnitTypes::Protoss_Forge);
 
     BWAPI::TilePosition start;
     if (forgeTile != BWAPI::TilePositions::None) {
         BWAPI::TilePosition natPos = the.bases.myNatural()->getTilePosition();
-        if (forgeTile.getDistance(natPos) >= 15) { return findGroupedLocation(b); }
-        start = forgeTile + (natPos - forgeTile) / 2;
+        if (forgeTile.getDistance(natPos) >= 25) { return findGroupedLocation(b); }
+        start = forgeTile + (natPos - forgeTile) / 2.0;
     }
     else {
         return findGroupedLocation(b);
     }
 
+    //boxesToDraw.push_back(MapBox{ (start.x - 5) * 32, (start.y - 5) * 32, 13 * 32, 13 * 32, BWAPI::Colors::Blue});
+
     BWAPI::TilePosition bestTile = BWAPI::TilePositions::None;
     double bestScore = INT_MIN;
 
-    // Scan 7x7 grid around the in-between point of the forge and the natural
-    for (int dx = -3; dx <= 3; ++dx) {
-        for (int dy = -3; dy <= 3; ++dy) {
+    // Scan 13x13 grid around the in-between point of the forge and the natural
+    for (int dx = -6; dx <= 6; ++dx) {
+        for (int dy = -6; dy <= 6; ++dy) {
 
             BWAPI::TilePosition t = start + BWAPI::TilePosition(dx, dy);
             if (!t.isValid()) continue;
             if (!canBuildWithSpace(t, b, 0)) continue;
-            if (t.getDistance(the.bases.myNatural()->getTilePosition()) < 3) continue;
+            if (t.getDistance(the.bases.myNatural()->getCenterTile()) < 3) continue;
 
             double forgeDist = forgeTile.getDistance(t);
 
-            double score = getDistanceToClosestMineral(forgeTile) - forgeDist * 32 * 0.75f;
+            double score = getDistanceToClosestMineral(forgeTile) - forgeDist * 32 * 1.75f;
             if (score > bestScore) {
                 bestScore = score;
                 bestTile = t;
@@ -790,101 +804,238 @@ bool BuildingPlacer::tileHasBuilding(int x, int y) const {
     return false;
 }
 
-bool BuildingPlacer::isWallAdjacent(const BWAPI::TilePosition & tile, const BWAPI::UnitType & buildingType) const
+bool BuildingPlacer::isWallAdjacent(const BWAPI::TilePosition & topLeft, const BWAPI::UnitType & buildingType) const
 {
-    bool bottom = wallsOnBottom(tile, buildingType);
-    bool top = wallsOnTop(tile, buildingType);
-    bool left = wallsOnLeft(tile, buildingType);
-    bool right = wallsOnRight(tile, buildingType);
 
-    int wallCount = bottom + top + left + right;
+    const int w = buildingType.tileWidth();
+    const int h = buildingType.tileHeight();
 
-    return wallCount == 1 ||
-        (wallCount == 2 && ((bottom && top) || (left && right)));
+    bool bottom = false;
+    bool top = false;
+    bool left = false;
+    bool right = false;
+
+    // Top and bottom edges of the building footprint
+    for (int dx = 0; dx < w; ++dx) {
+        top |= wallsOnTop(BWAPI::TilePosition(topLeft.x + dx, topLeft.y));
+        bottom |= wallsOnBottom(BWAPI::TilePosition(topLeft.x + dx, topLeft.y + h - 1));
+    }
+
+    // Left and right edges of the building footprint
+    for (int dy = 0; dy < h; ++dy) {
+        left |= wallsOnLeft(BWAPI::TilePosition(topLeft.x, topLeft.y + dy));
+        right |= wallsOnRight(BWAPI::TilePosition(topLeft.x + w - 1, topLeft.y + dy));
+    }
+
+    const int wallCount = static_cast<int>(bottom)
+        + static_cast<int>(top)
+        + static_cast<int>(left)
+        + static_cast<int>(right);
+
+    return wallCount <= 2 && wallCount > 0;
 }
 
-bool BuildingPlacer::wallsOnTop(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const
+bool BuildingPlacer::wallsOnTop(const BWAPI::TilePosition& tile) const
 {
-    int x1 = tile.x;
-    int x2 = tile.x + buildingType.tileWidth() - 1;
-    int y = tile.y - 1;
+    const int x = tile.x;
+    const int y = tile.y - 1;
 
-    if (y < 0 || x1 < 0 || x2 >= BWAPI::Broodwar->mapWidth())
+    if (x < 0 || x >= BWAPI::Broodwar->mapWidth() || y < 0)
     {
         return false;
     }
 
-    for (int x = x1; x <= x2; ++x)
-    {
-        if (isFreeTile(x, y) || tileHasBuilding(x, y))
-        {
-            return false;
-        }
-    }
-    return true;
+    return !isFreeTile(x, y) && !tileHasBuilding(x, y);
 }
 
-bool BuildingPlacer::wallsOnBottom(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const
+bool BuildingPlacer::wallsOnBottom(const BWAPI::TilePosition& tile) const
 {
-    int x1 = tile.x;
-    int x2 = tile.x + buildingType.tileWidth() - 1;
-    int y = tile.y + buildingType.tileHeight();
+    const int x = tile.x;
+    const int y = tile.y + 1;
 
-    if (y >= BWAPI::Broodwar->mapHeight() || x1 < 0 || x2 >= BWAPI::Broodwar->mapWidth())
+    if (x < 0 || x >= BWAPI::Broodwar->mapWidth() ||
+        y >= BWAPI::Broodwar->mapHeight())
     {
         return false;
     }
 
-    for (int x = x1; x <= x2; ++x)
-    {
-        if (isFreeTile(x, y) || tileHasBuilding(x, y))
-        {
-            return false;
-        }
-    }
-    return true;
+    return !isFreeTile(x, y) && !tileHasBuilding(x, y);
 }
 
-bool BuildingPlacer::wallsOnLeft(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const
+bool BuildingPlacer::wallsOnLeft(const BWAPI::TilePosition& tile) const
 {
-    int x = tile.x - 1;
-    int y1 = tile.y;
-    int y2 = tile.y + buildingType.tileHeight() - 1;
+    const int x = tile.x - 1;
+    const int y = tile.y;
 
-    if (x < 0 || y1 < 0 || y2 >= BWAPI::Broodwar->mapHeight())
+    if (x < 0 || y < 0 || y >= BWAPI::Broodwar->mapHeight())
     {
         return false;
     }
 
-    for (int y = y1; y <= y2; ++y)
-    {
-        if (isFreeTile(x, y) || tileHasBuilding(x, y))
-        {
-            return false;
-        }
-    }
-    return true;
+    return !isFreeTile(x, y) && !tileHasBuilding(x, y);
 }
 
-bool BuildingPlacer::wallsOnRight(const BWAPI::TilePosition& tile, BWAPI::UnitType buildingType) const
+bool BuildingPlacer::wallsOnRight(const BWAPI::TilePosition& tile) const
 {
-    int x = tile.x + buildingType.tileWidth();
-    int y1 = tile.y;
-    int y2 = tile.y + buildingType.tileHeight() - 1;
+    const int x = tile.x + 1;
+    const int y = tile.y;
 
-    if (x >= BWAPI::Broodwar->mapWidth() || y1 < 0 || y2 >= BWAPI::Broodwar->mapHeight())
+    if (x >= BWAPI::Broodwar->mapWidth() ||
+        y < 0 || y >= BWAPI::Broodwar->mapHeight())
     {
         return false;
     }
 
-    for (int y = y1; y <= y2; ++y)
-    {
-        if (isFreeTile(x, y) || tileHasBuilding(x, y))
-        {
-            return false;
+    return !isFreeTile(x, y) && !tileHasBuilding(x, y);
+}
+
+
+void BuildingPlacer::InitializeFFE() {
+    if (myNatFFEPlaces) return;
+
+    Base* natural = the.bases.myNatural();
+    if (!natural) return;
+
+    const BWEM::ChokePoint* baseChoke = natural->getBaseChokepoint();
+    if (!baseChoke) return;
+
+    myNatFFEPlaces = std::make_unique<FFEPlaces>();
+
+    BWAPI::Position startA = BWAPI::Position(baseChoke->Pos(BWEM::ChokePoint::end1));
+    BWAPI::Position startB = BWAPI::Position(baseChoke->Pos(BWEM::ChokePoint::end2));
+
+    BWAPI::TilePosition forgeTileA = findClosestBuildTile(startA, BWAPI::UnitTypes::Protoss_Forge, natural->getCenter());
+    BWAPI::TilePosition forgeTileB = findClosestBuildTile(startB, BWAPI::UnitTypes::Protoss_Forge, natural->getCenter());
+    
+
+    // Closest to front
+    BWAPI::TilePosition forgeTile =
+        natural->getFront().getDistance(BWAPI::Position(forgeTileA)) < natural->getFront().getDistance(BWAPI::Position(forgeTileB)) ?
+        forgeTileA : forgeTileB;
+
+    myNatFFEPlaces->forgePlan = FFEPlaces::PotentialLoc{ forgeTile, BWAPI::UnitTypes::Protoss_Forge.tileWidth(), BWAPI::UnitTypes::Protoss_Forge.tileHeight() };
+
+
+    BWAPI::TilePosition pylonTile = findBestFFEPylon(forgeTile, natural->getFrontTile(), natural->getCenterTile());
+    myNatFFEPlaces->pylonPlan = FFEPlaces::PotentialLoc{ pylonTile, BWAPI::UnitTypes::Protoss_Pylon.tileWidth(), BWAPI::UnitTypes::Protoss_Pylon.tileHeight() };
+
+}
+
+
+BWAPI::TilePosition BuildingPlacer::findClosestBuildTile(BWAPI::Position center, BWAPI::UnitType build, BWAPI::Position backAnchor) {
+    BWAPI::TilePosition start = BWAPI::TilePosition(center);
+
+    int maxRadius = 5;
+    const int w = build.tileWidth();
+    const int h = build.tileHeight();
+
+    auto isBuildableFootprint = [&](const BWAPI::TilePosition& t) -> bool {
+        for (int x = 0; x < w; ++x) {
+            for (int y = 0; y < h; ++y) {
+                if (!BWAPI::Broodwar->isBuildable(t.x + x, t.y + y, true)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+        };
+
+    BWAPI::TilePosition bestTile(-1, -1);
+    double bestScore = INT_MIN;
+
+    for (int r = 0; r < maxRadius; r++) {
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dy = -r; dy <= r; dy++) {
+                if (abs(dx) != r && abs(dy) != r) continue; // perimeter only
+
+                BWAPI::TilePosition t(start.x + dx, start.y + dy);
+                if (!t.isValid()) continue;
+
+                bool ok = isBuildableFootprint(t);
+                if (!ok) continue;
+
+                BWAPI::TilePosition bestWallTile = t;
+                double bestWallDist = BWAPI::Position(t).getDistance(backAnchor);
+
+                for (int wx = -1; wx <= 1; ++wx) {
+                    for (int wy = -1; wy <= 1; ++wy) {
+                        BWAPI::TilePosition c(t.x + wx, t.y + wy);
+                        if (!c.isValid()) continue;
+                        if (!isBuildableFootprint(c)) continue;
+                        if (!isWallAdjacent(c, BWAPI::UnitTypes::Protoss_Forge)) continue;
+
+                        const double distBack = BWAPI::Position(c).getDistance(backAnchor);
+                        if (distBack > bestWallDist) {
+                            bestWallDist = distBack;
+                            bestWallTile = c;
+                        }
+                    }
+                }
+
+                return bestWallTile;
+                
+                //const double distCenter = BWAPI::Position(t).getDistance(center);
+                //const double distBack = BWAPI::Position(t).getDistance(backAnchor);
+
+                //const double score = -3.0 * distCenter - 0.75 * distBack;
+
+                //if (score > bestScore) {
+                //    bestTile = t;
+                //    bestScore = score;
+                //}
+            }
         }
     }
-    return true;
+
+    return bestTile;
+}
+
+
+
+BWAPI::TilePosition BuildingPlacer::findBestFFEPylon(BWAPI::TilePosition forge, BWAPI::TilePosition start, BWAPI::TilePosition backPos) {
+    BWAPI::TilePosition best(-1, -1);
+    double bestScore = INT_MIN;
+
+    const int searchField = 8;
+
+    const int w = 2;
+    const int h = 2;
+
+    auto isBuildableFootprint = [&](const BWAPI::TilePosition& t) -> bool {
+        for (int x = 0; x < w; ++x) {
+            for (int y = 0; y < h; ++y) {
+                if (!BWAPI::Broodwar->isBuildable(t.x + x, t.y + y, true)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+        };
+
+    for (int dx = -searchField; dx <= searchField; dx++) {
+        for (int dy = -searchField; dy <= searchField; dy++) {
+            BWAPI::TilePosition p(start.x + dx, start.y + dy);
+
+            if (!p.isValid()) continue;
+
+            if (p.getDistance(backPos) < 3) continue;
+
+            if (isBuildableFootprint(p)) continue;
+
+            if (!pylonPowersForge(p, forge)) continue;
+
+            BWAPI::Position wp(p);
+
+            double score = -backPos.getDistance(p);
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = p;
+            }
+        }
+    }
+
+    return best;
 }
 
 
@@ -959,7 +1110,19 @@ void BuildingPlacer::initialize()
     _reserveMap = std::vector< std::vector<bool> >(BWAPI::Broodwar->mapWidth(), std::vector<bool>(BWAPI::Broodwar->mapHeight(), false));
 
     reserveSpaceNearResources();
-    _buildable.compute();
+    _buildable.compute();    
+
+    std::string mapName = BWAPI::Broodwar->mapFileName();
+
+    std::transform(mapName.begin(), mapName.end(), mapName.begin(),
+        [](unsigned char c) { return std::tolower(c); }
+    );
+
+    if (mapName.find("destination") == std::string::npos) {
+        // I hate that map
+        InitializeFFE();
+    }
+
 }
 
 // Place a building other than an expansion.
@@ -1008,6 +1171,11 @@ bool BuildingPlacer::isReserved(int x, int y) const
 
 void BuildingPlacer::drawReservedTiles() const
 {
+
+    if (myNatFFEPlaces) {
+        if (myNatFFEPlaces->forgePlan.origin.isValid()) myNatFFEPlaces->forgePlan.draw();
+        if (myNatFFEPlaces->pylonPlan.origin.isValid()) myNatFFEPlaces->pylonPlan.draw();
+    }
 
     for (auto b : boxesToDraw) {
         BWAPI::Broodwar->drawBoxMap(b.x, b.y, b.x + b.w, b.y + b.h, b.c);
