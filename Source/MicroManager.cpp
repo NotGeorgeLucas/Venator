@@ -155,6 +155,12 @@ int MicroManager::getBackstopAttackPriority(BWAPI::Unit target) const
         return 10;
     }
 
+    /* CODE ADDED */
+    // Honestly really valuable to destroy spire seeing how my games play out
+    if (targetType == BWAPI::UnitTypes::Zerg_Spire || targetType == BWAPI::UnitTypes::Zerg_Greater_Spire) {
+        return 8;
+    }
+
     // Spellcasters not previously mentioned are more important than key buildings.
     // Also remember to target other non-threat combat units.
     if (targetType.isSpellcaster() ||

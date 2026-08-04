@@ -66,6 +66,8 @@ class ProductionManager
 
     int _lostZealotNum = 0;
     int _lostPylonNum = 0;
+    int _lostProbeNum = 0;
+    int _lostObserverNum = 0;
 
 public:
 

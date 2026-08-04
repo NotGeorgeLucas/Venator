@@ -154,6 +154,7 @@
     <ClCompile Include="..\Source\Common.cpp" />
     <ClCompile Include="..\Source\Dll.cpp" />
     <ClCompile Include="..\Source\EasyBMP_1.06\EasyBMP.cpp" />
+    <ClCompile Include="..\Source\EnemyScoutFollower.cpp" />
     <ClCompile Include="..\Source\FAP.cpp" />
     <ClCompile Include="..\Source\GameCommander.cpp" />
     <ClCompile Include="..\Source\GameRecord.cpp" />
@@ -272,6 +273,7 @@
     <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP_BMP.h" />
     <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP_DataStructures.h" />
     <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP_VariousBMPutilities.h" />
+    <ClInclude Include="..\Source\EnemyScoutFollower.h" />
     <ClInclude Include="..\Source\FAP.h" />
     <ClInclude Include="..\Source\GameCommander.h" />
     <ClInclude Include="..\Source\GameRecord.h" />

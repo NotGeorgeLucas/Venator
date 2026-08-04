@@ -51,6 +51,8 @@ void GameCommander::update()
 
     // -- Managers that gather information. --
 
+    the.enemyScoutFollower.update();
+
     _timerManager.startTimer(TimerManager::Information);
     Bases::Instance().update();
     InformationManager::Instance().update();
@@ -139,6 +141,8 @@ void GameCommander::drawDebugInterface()
 
     drawUnitOrders();
     the.skillkit.draw();
+
+    the.enemyScoutFollower.draw();
 }
 
 void GameCommander::drawGameInformation(int x, int y)
@@ -555,6 +559,21 @@ void GameCommander::onUnitMorph(BWAPI::Unit unit)
 // Used only to choose a worker to scout.
 BWAPI::Unit GameCommander::getAnyFreeWorker()
 {
+    /* CODE ADDED */
+    // Choose a scout as far away from main as possible
+    BWAPI::Unit bestWorker = nullptr;
+    int maxDistance = -1;
+
+    Base* mainBase = the.bases.myMain();
+
+    if (!mainBase)
+    {
+        return nullptr;
+    }
+    Base* natural = mainBase->getNatural();
+
+    BWAPI::Position mainPos = mainBase->getPosition();
+
     for (BWAPI::Unit unit : _validUnits)
     {
         if (unit->getType().isWorker() &&
@@ -564,11 +583,20 @@ BWAPI::Unit GameCommander::getAnyFreeWorker()
             !unit->isCarryingGas() &&
             unit->getOrder() != BWAPI::Orders::MiningMinerals)
         {
-            return unit;
+            int distance = unit->getDistance(mainPos);
+            int score = distance;
+            if (natural) {
+                score -= 2 * natural->getCenter().getDistance(unit->getPosition());
+            }
+
+            if (distance > maxDistance) {
+                maxDistance = score;
+                bestWorker = unit;
+            }
         }
     }
 
-    return nullptr;
+    return bestWorker;
 }
 
 void GameCommander::assignUnit(BWAPI::Unit unit, BWAPI::Unitset & set)

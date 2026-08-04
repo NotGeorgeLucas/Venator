@@ -693,8 +693,51 @@ BWAPI::Unit ScoutManager::enemyWorkerToHarass() const
         }
     }
 
+    int maxWorkerHP;
+
+    switch (the.enemyRace()) {
+    case BWAPI::Races::Terran:
+        maxWorkerHP = BWAPI::UnitTypes::Terran_SCV.maxHitPoints();
+        break;
+    case BWAPI::Races::Protoss:
+        maxWorkerHP = BWAPI::UnitTypes::Protoss_Probe.maxHitPoints() + BWAPI::UnitTypes::Protoss_Probe.maxShields();
+        break;
+    case BWAPI::Races::Zerg:
+        maxWorkerHP = BWAPI::UnitTypes::Zerg_Drone.maxHitPoints();
+        break;
+    default:
+        // Fallback just in case, even though idk if this matters
+        maxWorkerHP = 999;
+        break;
+    }
+
+    int lowestWorkerHP = maxWorkerHP;
+    BWAPI::Unit lowestHPWorker = nullptr;
+
+    for (BWAPI::Unit u : the.enemy()->getUnits()) {
+        if (u->getType().isWorker()) {
+            if (the.enemyRace() != BWAPI::Races::Protoss) {
+                if (u->getHitPoints() < lowestWorkerHP) {
+                    lowestHPWorker = u;
+                    lowestWorkerHP = u->getHitPoints();
+                }
+            }
+            else {
+                if (u->getHitPoints() + u->getShields() < lowestWorkerHP) {
+                    lowestHPWorker = u;
+                    lowestWorkerHP = u->getHitPoints() + u->getShields();
+
+                }
+            }
+        }
+    }
+
+    if (lowestWorkerHP < maxWorkerHP && lowestHPWorker != nullptr) {
+        return lowestHPWorker;
+    }
+
     BWAPI::Unit enemyWorker = nullptr;
-    int maxDist = 500;    // ignore any beyond this range
+    int maxDist = 650;    // ignore any beyond this range
 
     // Failing that, find the enemy worker closest to the gas.
     BWAPI::Unit geyser = getAnyEnemyGeyser();

@@ -3,6 +3,7 @@
 
 #include "Bases.h"
 #include "InformationManager.h"
+#include "WorkerManager.h"
 #include "The.h"
 #include "UnitUtil.h"
 
@@ -23,6 +24,18 @@ void MicroMelee::executeMicro(const BWAPI::Unitset & targets, const UnitCluster 
     }
     assignTargets(units, targets);
 }
+
+
+static bool isCombatMeleeUnit(BWAPI::Unit u) {
+    if (!u || !u->exists()) return false;
+    if (u->getType().isWorker()) {
+        return WorkerManager::Instance().isCombatWorker(u);
+    }
+
+    return UnitUtil::CanAttackGround(u);
+}
+
+int _lastDidCatchMove = 0;
 
 void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::Unitset & targets)
 {
@@ -154,6 +167,20 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
         underThreat = squadSafeAgainstTanks ? false : anyUnderThreat(meleeUnits);
     }
 
+
+
+    auto estimateArrival = [&](BWAPI::Unit unit, BWAPI::Position target) {
+        if (!unit) return 999999.0f;
+
+        float dist = (float)unit->getDistance(target);
+        float baseSpeed = 2.4f;
+
+        float expected = 0.8f; // your "reality is annoying" factor
+        float safetyTax = 1.25f; // uncertainty in pathing / slows
+
+        return (dist / (baseSpeed * expected)) * safetyTax;
+        };
+
     for (BWAPI::Unit meleeUnit : meleeUnits)
     {
         // Try to avoid being hit by an undetected enemy dark templar.
@@ -164,6 +191,28 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
 
         // Don't touch the merging DTs
         if (meleeUnit->getType() == BWAPI::UnitTypes::Protoss_Dark_Templar && daBusy.find(meleeUnit) != daBusy.end()) {
+            continue;
+        }
+
+        BWAPI::Position trapPosition = the.enemyScoutFollower.getScoutTrapPosition(32);
+
+        if (_lastTrapFrame != the.now() && trapPosition != BWAPI::Positions::None && meleeUnit->getPosition().getApproxDistance(the.bases.myMain()->getCenter()) <= 17 * 32 && the.enemyScoutFollower.getScout()) {
+            
+            auto scout = the.enemyScoutFollower.getScout();
+
+
+            if (scout->getPosition().getApproxDistance(meleeUnit->getPosition()) <= 3 * 32 && meleeUnit->getPosition().getApproxDistance(trapPosition) <= 5 * 32) {
+                the.micro.CatchAndAttackUnit(meleeUnit, scout);
+                BWAPI::Broodwar->drawTextMap(meleeUnit->getPosition().x, meleeUnit->getPosition().y + 32, "TRAP SPRUNG");
+            }
+            else {
+                if (the.now() - _lastDidCatchMove > 8) {
+                    _lastDidCatchMove = the.now();
+                    the.micro.MoveNear(meleeUnit, trapPosition);
+                    BWAPI::Broodwar->drawTextMap(meleeUnit->getPosition().x, meleeUnit->getPosition().y + 32, "MOVING TO TRAP");
+                }
+            }
+            _lastTrapFrame = the.now();
             continue;
         }
 
@@ -231,12 +280,11 @@ BWAPI::Unit MicroMelee::getTarget(BWAPI::Unit meleeUnit, const BWAPI::Unitset & 
             continue;
         }
 
-        // TODO disabled - seems to be wrong, skips targets it should not
         // Don't chase targets that we can't catch.
-        //if (!CanCatchUnit(meleeUnit, target))
-        //{
-        //	continue;
-        //}
+        if (!CanCatchUnit(meleeUnit, target))
+        {
+        	continue;
+        }
 
         // Let's say that 1 priority step is worth 64 pixels (2 tiles).
         // We care about unit-target range and target-order position distance.

@@ -126,14 +126,14 @@ SquadOrder::SquadOrder(SquadOrderTypes type, BWAPI::Position position, int radiu
 
 
 /* CODE ADDED */
-// BWEM choke integrated
+// BWEM choke integrated, entrance for flying units from a safer angle
 
 // `base` must not be null.
 // If useDistances, use the distances of _base. Don't fill in _distances.
 // If !useDistances, use the position of the base but don't set _base. We don't want any distances.
 SquadOrder::SquadOrder(SquadOrderTypes type, Base * base, int radius, bool useDistances, const std::string & status) 
     : _type(type)
-    , _position(base->getOwner() == the.self() ?  BWAPI::Position(base->getBaseChokepoint()->Pos(BWEM::ChokePoint::middle)) : base->getCenter())
+    , _position(base->getOwner() == the.self() ? BWAPI::Position(base->getBaseChokepoint()->Pos(BWEM::ChokePoint::middle)) : base->getCenter())
     , _base(useDistances ? base : nullptr)
     , _radius(radius)
 	, _raid(false)
@@ -142,7 +142,7 @@ SquadOrder::SquadOrder(SquadOrderTypes type, Base * base, int radius, bool useDi
 {
     UAB_ASSERT(base, "baseless");
 }
-
+ 
 SquadOrder::~SquadOrder()
 {
     delete _distances;      // not always set

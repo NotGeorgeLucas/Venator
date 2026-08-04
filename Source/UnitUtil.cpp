@@ -781,3 +781,19 @@ bool UnitUtil::ImmobilizeUnit(BWAPI::Unit unit)
     }
     return false;
 }
+
+
+BWAPI::Position UnitUtil::getAveragePosition(const BWAPI::Unitset& units) {
+    if (units.empty()) return BWAPI::Positions::None;
+
+    int sum_x = 0;
+    int sum_y = 0;
+
+    for (auto u : units) {
+        BWAPI::Position p = u->getPosition();
+        sum_x += p.x;
+        sum_y += p.y;
+    }
+
+    return BWAPI::Position(sum_x / units.size(), sum_y / units.size());
+}

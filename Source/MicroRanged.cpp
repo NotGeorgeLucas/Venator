@@ -53,8 +53,8 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
     });
 
     CarrierThreatInfo cInfo;
-    cInfo.maxThreatElevation = INT_MIN;
-    cInfo.shouldGoHighground = false;
+    cInfo.maxThreatRange = INT_MIN;
+    cInfo.isThreatened = false;
 
     // Figure out if the enemy is ready to attack ground or air.
     bool enemyHasAntiGround = false;
@@ -74,13 +74,12 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
             }
         }
 
-        if (target->getType() == BWAPI::UnitTypes::Protoss_Dragoon || target->getType() == BWAPI::UnitTypes::Terran_Goliath) {
+        if (isCarrierThreat(target)) {
             cInfo.threats.insert(target);
-            BWAPI::TilePosition tp(target->getPosition());
 
-            int elevation = BWAPI::Broodwar->getGroundHeight(tp);
-            if (elevation > cInfo.maxThreatElevation) {
-                cInfo.maxThreatElevation = elevation;
+            int attackRange = UnitUtil::GetAttackRangeAssumingUpgrades(target->getType(), BWAPI::UnitTypes::Protoss_Carrier);
+            if (attackRange > cInfo.maxThreatRange) {
+                cInfo.maxThreatRange= attackRange;
             }
         }
     }
@@ -90,7 +89,7 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
         carrierNum += (u->getType() == BWAPI::UnitTypes::Protoss_Carrier);
     }
 
-    cInfo.shouldGoHighground = ((int)((float)carrierNum * 1.5) <= cInfo.threats.size());
+    cInfo.isThreatened = ((int)((float)carrierNum * 1.5) <= cInfo.threats.size());
     
     // Are any enemies in range to shoot at the ranged units?
     bool underThreat = order->isCombatOrder() && anyUnderThreat(rangedUnits);
@@ -297,41 +296,7 @@ BWAPI::Position MicroRanged::computeCarrierVector(BWAPI::Unit carrier, const std
         // Distance falloff (closer = stronger)
         double weight = priority * (32.0 / dist);
 
-        // Threat detection (very rough)
-        bool isThreat = false;
-
-        switch (unit->getType()) {
-            // Terran
-            case BWAPI::UnitTypes::Terran_Goliath:
-            case BWAPI::UnitTypes::Terran_Wraith:
-            case BWAPI::UnitTypes::Terran_Marine:
-            case BWAPI::UnitTypes::Terran_Missile_Turret:
-            case BWAPI::UnitTypes::Terran_Valkyrie:
-                isThreat = true;
-                break;
-
-            // Protoss
-            case BWAPI::UnitTypes::Protoss_Dragoon:
-            case BWAPI::UnitTypes::Protoss_Scout:
-            case BWAPI::UnitTypes::Protoss_Photon_Cannon:
-            case BWAPI::UnitTypes::Protoss_Corsair:
-            case BWAPI::UnitTypes::Protoss_Archon:
-                isThreat = true;
-                break;
-
-            // Zerg
-            case BWAPI::UnitTypes::Zerg_Hydralisk:
-            case BWAPI::UnitTypes::Zerg_Mutalisk:
-            case BWAPI::UnitTypes::Zerg_Scourge:
-            case BWAPI::UnitTypes::Zerg_Devourer:
-            case BWAPI::UnitTypes::Zerg_Spore_Colony:
-                isThreat = true;
-                break;
-
-            default:
-                isThreat = false;
-                break;
-        }
+        bool isThreat = isCarrierThreat(unit);
 
         if (isThreat) {
             // Repel instead of attract
@@ -369,6 +334,49 @@ void MicroRanged::cleanupCarrierTargets()
 }
 
 
+bool MicroRanged::isCarrierThreat(BWAPI::Unit unit) {
+    // Threat detection (very rough)
+    bool isThreat = false;
+    if (!(unit->isUnderDisruptionWeb() || unit->isStasised() || unit->isMaelstrommed())) {
+
+        switch (unit->getType()) {
+            // Terran
+        case BWAPI::UnitTypes::Terran_Goliath:
+        case BWAPI::UnitTypes::Terran_Wraith:
+        case BWAPI::UnitTypes::Terran_Marine:
+        case BWAPI::UnitTypes::Terran_Missile_Turret:
+        case BWAPI::UnitTypes::Terran_Valkyrie:
+            isThreat = true;
+            break;
+
+            // Protoss
+        case BWAPI::UnitTypes::Protoss_Dragoon:
+        case BWAPI::UnitTypes::Protoss_Scout:
+        case BWAPI::UnitTypes::Protoss_Photon_Cannon:
+        case BWAPI::UnitTypes::Protoss_Corsair:
+        case BWAPI::UnitTypes::Protoss_Archon:
+            isThreat = true;
+            break;
+
+            // Zerg
+        case BWAPI::UnitTypes::Zerg_Hydralisk:
+        case BWAPI::UnitTypes::Zerg_Mutalisk:
+        case BWAPI::UnitTypes::Zerg_Scourge:
+        case BWAPI::UnitTypes::Zerg_Devourer:
+        case BWAPI::UnitTypes::Zerg_Spore_Colony:
+            isThreat = true;
+            break;
+
+        default:
+            isThreat = false;
+            break;
+        }
+    }
+
+    return isThreat;
+}
+
+
 /* CODE ADDED */
 // Compute carrier vector and do attack-move to that vector
 void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, CarrierThreatInfo cInfo) {
@@ -379,7 +387,7 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
     bool foundTile = false;
 
     // Experimental branch turned off
-    if (false && cInfo.shouldGoHighground && cInfo.threats.size() > 0) {
+    if (cInfo.isThreatened && cInfo.threats.size() > 0 && (the.micro.carrierGetInterceptorsOut(carrier) == carrier->getInterceptorCount())) {
 
         BWAPI::TilePosition cOrigin(carrier->getPosition());
 
@@ -410,8 +418,9 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
                 
         }
 
+        int desiredDist = std::clamp(closestDist, cInfo.maxThreatRange + 32, 10 * 32);
 
-        moveTo = closestThreat->getPosition() + (fleeDir * 9.5 * 32);
+        moveTo = closestThreat->getPosition() + (fleeDir * desiredDist);
         
     }
     else {
@@ -423,16 +432,14 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
 
         std::vector<UnitInfo> enemyForce;
 
-        for (const auto& kv : enemyForceMap)
-        {
+        for (const auto& kv : enemyForceMap) {
             const UnitInfo& ui = kv.second;
 
             if (!ui.unit || !ui.unit->exists()) continue;
             if (ui.goneFromLastPosition) continue;
             if (ui.lastPosition.getApproxDistance(carrier->getPosition()) >= 35 * 32) continue;
 
-            if (ui.isCompleted() && ui.powered)
-            {
+            if (ui.isCompleted() && ui.powered) {
                 enemyForce.push_back(ui);
             }
         }
@@ -467,6 +474,7 @@ bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target) {
         !lastTarget->exists() ||
         lastTarget->getDistance(unit) >= 10 * 32 ||
         target->getDistance(unit) >= 10 * 32 ||
+        std::abs(unit->getVelocityX()) + std::abs(unit->getVelocityY()) == 0 ||
         getAttackPriority(unit, target) > getAttackPriority(unit, lastTarget);
 }
 

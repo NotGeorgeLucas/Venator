@@ -332,6 +332,28 @@ void BuildOrderQueue::drawQueueInformation(int x, int y, bool outOfBook)
     }
 }
 
+
+/* CODE ADDED */
+// Util function for checking if something is producing a unit
+bool BuildOrderQueue::isUnitTypeBeingProduced(BWAPI::UnitType type) const {
+    BWAPI::Player self = BWAPI::Broodwar->self();
+    if (!self)
+        return false;
+
+    for (BWAPI::Unit u : self->getUnits()) {
+        if (!u || !u->exists()) continue;
+
+        if (!u->isTraining()) continue;
+
+        const BWAPI::UnitType::list& q = u->getTrainingQueue();
+        if (!q.empty() && q.front() == type) return true;
+    }
+
+    return false;
+}
+
+
+
 BuildOrderItem BuildOrderQueue::operator [] (int i)
 {
     return queue[i];

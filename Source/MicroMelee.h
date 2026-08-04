@@ -6,6 +6,9 @@ class MicroManager;
 
 class MicroMelee : public MicroManager
 {
+private:
+    int _lastTrapID = -1;
+    int _lastTrapFrame = -1;
 
 public:
 

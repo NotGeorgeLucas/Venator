@@ -63,6 +63,19 @@ public:
     void totalCosts(int & minerals, int & gas) const;
     bool isGasStealInQueue() const;
 
+    bool isUnitTypeBeingProduced(BWAPI::UnitType type) const;
+
+    int BuildOrderQueue::getNextIndex(BWAPI::UnitType type) const {
+        for (int i = (int)queue.size() - 1; i >= 0; --i) {
+            const MacroAct& act = queue[i].macroAct;
+
+            if (act.isUnit() && act.getUnitType() == type) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     void drawQueueInformation(int x, int y, bool outOfBook);
 
     // overload the bracket operator for ease of use

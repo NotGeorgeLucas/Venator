@@ -100,6 +100,7 @@ public:
     void Stop(BWAPI::Unit unit);
     void HoldPosition(BWAPI::Unit unit);
     void CatchAndAttackUnit(BWAPI::Unit attacker, BWAPI::Unit target);
+    int  carrierGetInterceptorsOut(BWAPI::Unit carrier);
     void CarrierAttackMove(BWAPI::Unit carrier, BWAPI::Unit target, BWAPI::Position movePos);
     void AttackUnit(BWAPI::Unit attacker, BWAPI::Unit target);
     void AttackMove(BWAPI::Unit attacker, const BWAPI::Position & targetPosition);

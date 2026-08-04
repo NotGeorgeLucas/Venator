@@ -234,6 +234,27 @@ namespace UAlbertaBot {
             if (closestEnemy->flying) {
                 dealDamage(*closestEnemy, fu.airDamage, fu.airDamageType);
                 fu.attackCooldownRemaining = fu.airCooldown;
+
+                /* CODE ADDED */
+                // Corsair splash included
+                if (fu.unitType == BWAPI::UnitTypes::Protoss_Corsair) {
+                    for (auto& enemy : enemyUnits) {
+                        if (enemy.id == closestEnemy->id) continue;
+                        if (enemy.flying && enemy.unitType != BWAPI::UnitTypes::Protoss_Interceptor) {
+
+                            if (distSquared(*closestEnemy, enemy) < 5 * 5) {
+                                dealDamage(enemy, fu.airDamage, fu.airDamageType);
+                            }
+                            else if (distSquared(*closestEnemy, enemy) < 50 * 50) {
+                                dealDamage(enemy, fu.airDamage / 2, fu.airDamageType);
+                            }
+                            else if (distSquared(*closestEnemy, enemy) < 100 * 100) {
+                                dealDamage(enemy, fu.airDamage / 4, fu.airDamageType);
+                            }
+                        }
+                    }
+                }
+
             }
             else {
                 dealDamage(*closestEnemy, fu.groundDamage, fu.groundDamageType);
@@ -360,7 +381,29 @@ namespace UAlbertaBot {
 
     // If `retreat` then we simulate player1 retreating from combat with player2, who follows and keeps shooting.
     void FastAPproximation::isimulate(bool retreat) {
+
+        auto frozen = [](const FAPUnit& u) {
+            return u.stasisTimer > 0 || (u.maelstromTimer > 0 && u.isOrganic) || u.lockdownTimer > 0;
+        };
+
         for (auto fu = player1.begin(); fu != player1.end();) {
+
+
+            /* CODE ADDED */
+            // Stasis, maelstrom, dweb
+            if (frozen(*fu)) {
+                --fu->stasisTimer;
+                --fu->maelstromTimer;
+                --fu->lockdownTimer;
+                ++fu;
+                continue;
+            }
+
+            if (fu->underDisruptionWeb && fu->dwebEscapeFrames > 0) {
+                --fu->dwebEscapeFrames;
+                continue;
+            }
+
             if (isSuicideUnit(fu->unitType)) {
                 bool result = suicideSim(*fu, player2);
                 if (result)
@@ -548,6 +591,20 @@ namespace UAlbertaBot {
         maxHealth *= 2;
         shields *= 2;
         maxShields *= 2;
+
+        stasisTimer = ui.unit ? ui.unit->getStasisTimer() : 0;
+        maelstromTimer = ui.unit ? ui.unit->getMaelstromTimer() : 0;
+        lockdownTimer = ui.unit ? ui.unit->getLockdownTimer() : 0;
+        underDisruptionWeb = ui.unit && ui.unit->isUnderDisruptionWeb();
+
+        if (underDisruptionWeb) {
+            // crude approximation: assume it needs to walk ~40 pixels to get out
+            dwebEscapeFrames = std::max(
+                1,
+                (int)std::ceil(40.0 / std::max(1.0, speed))
+            );
+        }
+
     }
 
     // Copy a FAPUnit.

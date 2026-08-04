@@ -245,21 +245,50 @@ BWAPI::Position PredictMovement(BWAPI::Unit unit, int frames)
     return pos.makeValid();
 }
 
-// Estimate whether the chaser can catch the runaway.
-// It's not an exact calculation. We suppose that it can get away if its top speed is at
-// least as great as ours and it is currently moving nearly directly away from us.
-bool CanCatchUnit(BWAPI::Unit chaser, BWAPI::Unit runaway)
-{
-    if (runaway->getPlayer()->topSpeed(runaway->getType()) < chaser->getPlayer()->topSpeed(chaser->getType()))
-    {
-        return true;
-    }
 
-    BWAPI::Position predict(PredictMovement(runaway, 8));
-    int ab = chaser->getDistance(runaway);
-    int ac = chaser->getDistance(predict);
-    int bc = runaway->getDistance(predict);
-    return double(ab + bc) / ac > 0.9;
+/* CODE ADDED */
+// Fixed CanCatchUnit for  melee units
+bool areMostlyParallel(const BWAPI::Position& a, const BWAPI::Position& b, double threshold = 0.9) {
+    double dot = a.x * b.x + a.y * b.y;
+
+    double magA = std::sqrt(a.x * a.x + a.y * a.y);
+    double magB = std::sqrt(b.x * b.x + b.y * b.y);
+
+    if (magA == 0 || magB == 0) return false; // zero vector has no direction
+
+    double cosTheta = dot / (magA * magB);
+
+    return std::abs(cosTheta) >= threshold;
+}
+
+
+// Estimate whether the chaser can catch the runaway.
+// Made mostly for melee units
+bool CanCatchUnit(BWAPI::Unit chaser, BWAPI::Unit runaway) {
+
+    if (runaway->getVelocityX() == 0 && runaway->getVelocityY() == 0) return true;
+
+    BWAPI::Position cFuture = PredictMovement(chaser, 8);
+    BWAPI::Position rFuture = PredictMovement(runaway, 8);
+
+    BWAPI::Position chaserVector = cFuture - chaser->getPosition();
+    BWAPI::Position runawayVector = rFuture - runaway->getPosition();
+
+    BWAPI::Position d = runaway->getPosition() - chaser->getPosition();
+
+    double dist = d.getLength();
+    if (dist == 0) return true;
+
+    // normalize separation direction
+    double ux = d.x / dist;
+    double uy = d.y / dist;
+
+    // projection of velocities onto separation axis
+    double closingSpeed =
+        (chaserVector.x - runawayVector.x) * ux +
+        (chaserVector.y - runawayVector.y) * uy;
+
+    return closingSpeed > 0;
 }
 
 // Ground height, folding the "doodad" levels into the regular levels.

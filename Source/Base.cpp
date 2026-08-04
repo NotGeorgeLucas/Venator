@@ -485,7 +485,11 @@ int Base::getNumEnemyNondefenseBuildings() const
 
 		if (ui.type.isBuilding() &&
 			isInBase(BWAPI::TilePosition(ui.lastPosition)) &&
-			!(UnitUtil::IsStaticDefense(ui.type) || ui.type == BWAPI::UnitTypes::Zerg_Creep_Colony))
+			!(UnitUtil::IsStaticDefense(ui.type) || ui.type == BWAPI::UnitTypes::Zerg_Creep_Colony)
+            /* CODE ADDED */
+            // Trying to stop dead base aggression
+            && !ui.type.isAddon()
+            )
 		{
 			++count;
 		}
@@ -653,6 +657,30 @@ void Base::drawBaseInfo() const
 
     BWAPI::Broodwar->drawBoxMap(minX, minY, maxX, maxY, BWAPI::Colors::Blue);
 }
+
+
+/* CODE ADDED */
+// Entrance for flying units
+const BWAPI::Position Base::getAirUnitEntrance() const {
+    BWAPI::Unitset minerals = getMinerals();
+
+    int x = 0; int y = 0;
+
+    if (minerals.size() > 0) {
+        for (const auto& m : minerals) {
+            x+=m->getPosition().x;
+            y+=m->getPosition().y;
+        }
+
+        BWAPI::Position avg(x / minerals.size(), y / minerals.size());
+
+        return getCenter() + (getCenter() - avg) * 2;
+    }
+    else {
+        return getCenter();
+    }
+}
+
 
 
 /* CODE ADDED */

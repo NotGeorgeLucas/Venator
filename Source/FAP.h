@@ -50,6 +50,15 @@ namespace UAlbertaBot {
 
             mutable int attackCooldownRemaining = 0;
 
+            /* CODE ADDED */
+            // disable timers
+
+            mutable int stasisTimer = 0;
+            mutable int maelstromTimer = 0;
+            mutable bool underDisruptionWeb = false;
+            mutable int dwebEscapeFrames = 0;
+            mutable int lockdownTimer = 0;
+
 #ifdef _DEBUG
 
             mutable int damageTaken = 0;

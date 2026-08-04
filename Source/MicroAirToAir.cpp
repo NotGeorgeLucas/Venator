@@ -5,6 +5,17 @@
 #include "Bases.h"
 #include "UnitUtil.h"
 
+#include "BWEM/examples.h"
+#include "BWEM/map.h"
+#include "BWEM/base.h"
+#include "BWEM/neutral.h"
+#include "BWEM/mapPrinter.h"
+#include "BWEM/mapDrawer.h"
+#include "BWEM/gridMap.h"
+#include "BWEM/defs.h"
+#include "BWEM/bwapiExt.h"
+
+
 using namespace UAlbertaBot;
 
 // The splash air-to-air units: Valkyries, corsairs, devourers.
@@ -195,7 +206,7 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
             }
         }
 
-        bool isHunter = the.enemyRace() == BWAPI::Races::Zerg && (airUnit == hunterA || airUnit == hunterB);
+        bool isHunter = the.enemyRace() == BWAPI::Races::Zerg && (airUnit == hunterA || airUnit == hunterB) && InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Mutalisk, the.enemy()) == 0;
 
 
         /* CODE ADDED */
@@ -209,6 +220,11 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
             BWAPI::Broodwar->drawCircleMap(airUnit->getPosition(), dwebCastRange, canDWeb(airUnit) ? BWAPI::Colors::Red : BWAPI::Colors::Blue);
 
             bool escortCorsair = airUnit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() != BWAPI::Races::Zerg && (!target || threatVector.empty());
+
+            // Reconsider if the enemy uses wraiths
+            if (escortCorsair && the.enemyRace() == BWAPI::Races::Terran) {
+                if (the.info.getNumUnits(BWAPI::UnitTypes::Terran_Wraith, the.enemy()) > 2) escortCorsair = false;
+            }
 
 
             // Selfish web for overlord hunting
@@ -344,9 +360,17 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                     if (dist <= range) {
                         inDanger = true;
 
-                        BWAPI::Position away;
-                        away = distA < distB? airUnit->getPosition() - threat.currPos : airUnit->getPosition() - threat.predictedPos;
+                        BWAPI::Position away = BWAPI::Position(0,0);
+                        BWAPI::Position corner = nearestMapCorner(airUnit->getPosition());
+                        BWAPI::Position cliffGetaway = findCliffAwayFromCorner(airUnit, corner);
+
+                        if (corner.getApproxDistance(airUnit->getPosition()) <= 8 * 32 && cliffGetaway != BWAPI::Position(0, 0)) {
+                            away = cliffGetaway - airUnit->getPosition();
+                        } else{
+                            away = distA < distB? airUnit->getPosition() - threat.currPos : airUnit->getPosition() - threat.predictedPos;
+                        }
                         fleeVector += away;
+
                     }
                 }
 
@@ -465,11 +489,9 @@ void MicroAirToAir::assignTargets(const BWAPI::Unitset & airUnits, const BWAPI::
                         if (fleeVector != BWAPI::Position(0, 0)) {
                             BWAPI::Position fleeTo = airUnit->getPosition() + fleeVector;
                             
-                            int mapW = BWAPI::Broodwar->mapWidth() * 32; int mapH = BWAPI::Broodwar->mapHeight() * 32;
-
-                            // Clamp to map bounds
-                            fleeTo.x = std::max(0, std::min(fleeTo.x, mapW - 1));
-                            fleeTo.y = std::max(0, std::min(fleeTo.y, mapH - 1));
+                            if (!fleeTo.isValid()) {
+                                fleeTo = fleeTo.makeValid();
+                            }
 
                             BWAPI::Broodwar->drawTextMap(airUnit->getPosition() + BWAPI::Position(0, 32), "Running away from threat");
                             the.micro.Move(airUnit, fleeTo);
@@ -786,6 +808,90 @@ BWAPI::Unit MicroAirToAir::getTarget(BWAPI::Unit airUnit, const BWAPI::Unitset &
     }
     
     return bestTarget;
+}
+
+
+bool MicroAirToAir::isWithinNTilesOfMapEdge(BWAPI::Unit unit, int nTiles) const {
+    BWAPI::TilePosition t(unit->getPosition());
+
+    const int mapW = BWAPI::Broodwar->mapWidth();
+    const int mapH = BWAPI::Broodwar->mapHeight();
+
+    const int leftDist = t.x;
+    const int rightDist = (mapW - 1) - t.x;
+    const int topDist = t.y;
+    const int bottomDist = (mapH - 1) - t.y;
+
+    return (leftDist <= nTiles ||
+        rightDist <= nTiles ||
+        topDist <= nTiles ||
+        bottomDist <= nTiles);
+}
+
+
+BWAPI::Position MicroAirToAir::nearestMapCorner(BWAPI::Position p) {
+    int mapWidthPx = BWAPI::Broodwar->mapWidth() * 32; int mapHeightPx = BWAPI::Broodwar->mapHeight() * 32;
+    
+    BWAPI::Position corners[4] = {
+        {0, 0},
+        {mapWidthPx - 1, 0},
+        {0, mapHeightPx - 1},
+        {mapWidthPx - 1, mapHeightPx - 1}
+    };
+
+    BWAPI::Position best = corners[0];
+    int bestD2 = (p.x - best.x) * (p.x - best.x) + (p.y - best.y) * (p.y - best.y);
+
+    for (int i = 1; i < 4; ++i) {
+        int d2 = (p.x - corners[i].x) * (p.x - corners[i].x) +
+            (p.y - corners[i].y) * (p.y - corners[i].y);
+        if (d2 < bestD2) { bestD2 = d2; best = corners[i]; }
+    }
+    return best;
+}
+
+BWAPI::Position MicroAirToAir::MicroAirToAir::findCliffAwayFromCorner(BWAPI::Unit unit, BWAPI::Position corner) {
+    const BWAPI::Position unitPos = unit->getPosition();
+
+    BWAPI::Position dir(unitPos.x - corner.x, unitPos.y - corner.y);
+    const double len = std::hypot(double(dir.x), double(dir.y));
+    if (len == 0.0) return BWAPI::Position();
+
+    const double dx = dir.x / len;
+    const double dy = dir.y / len;
+
+    constexpr int stepPixels = 8;
+    constexpr int maxSteps = 400;
+
+    int prevGroundHeight = BWEMMap.GetTile(BWAPI::TilePosition(unitPos)).GroundHeight();
+
+    BWAPI::Position lastWalkable = unitPos;
+
+    for (int step = 1; step <= maxSteps; step++) {
+        BWAPI::Position p(
+            int(std::lround(unitPos.x + dx * step * stepPixels)),
+            int(std::lround(unitPos.y + dy * step * stepPixels)));
+
+        BWAPI::WalkPosition wp(p);
+
+        if (!BWEMMap.Valid(wp)) break;
+
+        const auto& miniTile = BWEMMap.GetMiniTile(wp);
+
+        if (!miniTile.Walkable())
+            return lastWalkable;
+
+        int groundHeight =
+            BWEMMap.GetTile(BWAPI::TilePosition(p)).GroundHeight();
+
+        if (groundHeight != prevGroundHeight)
+            return p;
+
+        prevGroundHeight = groundHeight;
+        lastWalkable = p;
+    }
+
+    return BWAPI::Position();
 }
 
 
@@ -1197,7 +1303,7 @@ int MicroAirToAir::getAttackPriority(BWAPI::Unit airUnit, BWAPI::Unit target)
     if (UnitUtil::TypeCanAttackAir(targetType))    // includes carriers
     {
         // Enemy unit which is far enough outside its range is lower priority.
-        if (airUnit->getDistance(target) > 64 + UnitUtil::GetAttackRange(target, airUnit))
+        if (airUnit->getDistance(target) > 64 + UnitUtil::GetAttackRangeAssumingUpgrades(target->getType(), airUnit->getType()))
         {
             return 8;
         }

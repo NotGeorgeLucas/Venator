@@ -16,6 +16,8 @@
 #include "SkillKit.h"
 #include "Tasks.h"
 
+#include "EnemyScoutFollower.h"
+
 
 #include "BWEM/bwem.h"
 namespace { auto& BWEMMap = BWEM::Map::Instance(); }
@@ -102,6 +104,8 @@ namespace UAlbertaBot
         StaticDefense & staticDefense;
         // Asynchronous tasks.
         Tasks tasks;
+
+        EnemyScoutFollower enemyScoutFollower;
 
         // Varying during the game.
 

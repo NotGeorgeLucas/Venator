@@ -2,8 +2,12 @@
 
 #include "The.h"
 #include "UnitUtil.h"
+#include "StrategyManager.h"
 
 using namespace UAlbertaBot;
+
+/* CODE ADDED */
+// Reaver Dropping
 
 // Distance between evenly-spaced waypoints, in tiles.
 // Not all are evenly spaced.
@@ -16,6 +20,19 @@ MicroTransports::MicroTransports()
     , _direction(0)
     , _target(BWAPI::Positions::Invalid)
 {
+}
+
+bool MicroTransports::isDropMode() {
+    if (_cachedDropMode < 0) {
+        if (StrategyManager::Instance().dropIsPlanned()) {
+            _cachedDropMode = 1;
+        }
+        else {
+            _cachedDropMode = 0;
+        }
+    }
+
+    return _cachedDropMode > 0;
 }
 
 // No micro to execute here. Does nothing, never called.
@@ -114,18 +131,187 @@ void MicroTransports::update()
         return;
     }
 
-    // If we're not full yet, wait.
-    if (_transportShip->getSpaceRemaining() > 0)
-    {
+
+
+    if (isDropMode()) {
+
+        // If we're not full yet, wait.
+        if (_transportShip->getSpaceRemaining() > 0) {
+            return;
+        }
+
+        // All clear. Go do stuff.
+        maybeUnloadTroops();
+        moveTransport();
+    
+        drawTransportInformation();
+
+    }
+    else {
+
+
+        if (findAndJoinSquad(_transportShip)) {
+            maybePickupCarryTarget(_transportShip);
+            moveCarryTarget(_transportShip);
+            maybeDropCarryTarget(_transportShip);
+        }
+
+    }
+}
+
+
+
+
+bool MicroTransports::findAndJoinSquad(BWAPI::Unit transport) {
+
+    if (transport->getLoadedUnits().size() > 0) {
+        return true;
+    }
+
+    const std::vector<UnitCluster> allyGroups = the.ops.getFriendlyClusters();
+
+    if (allyGroups.size() < 1) { return false; }
+
+    UnitCluster bestCluster = allyGroups[0];
+    int bestValue = INT_MIN;
+
+    for (UnitCluster cl : allyGroups) {
+
+        int groupScore = 0;
+
+        for (const auto & unit : cl.units) {
+            BWAPI::UnitType type = unit->getType();
+
+            if (type == BWAPI::UnitTypes::Protoss_Reaver) {
+                groupScore += 500000;
+            } else if (type == BWAPI::UnitTypes::Protoss_Dragoon) {
+                groupScore += 10000;
+            }
+            else if(transport->canLoad(unit)) {
+                groupScore += 3 * type.gasPrice() + type.mineralPrice();;
+            }
+        }
+
+        if (groupScore > bestValue) {
+            bestValue = groupScore;
+            bestCluster = cl;
+        }
+    }
+
+    if (transport->getPosition().getApproxDistance(bestCluster.center) >= bestCluster.radius) {
+        the.micro.MoveNear(transport, bestCluster.center);
+        return false;
+    }
+    else {
+
+        BWAPI::Unit bestCarryUnit;
+        int bestValue = INT_MIN;
+
+        for (BWAPI::Unit u : bestCluster.units) {
+
+            BWAPI::UnitType type = u->getType();
+            int value = 0;
+
+            if (type == BWAPI::UnitTypes::Protoss_Reaver) {
+                bestValue += 500000;
+            }
+            else if (type == BWAPI::UnitTypes::Protoss_Dragoon) {
+                bestValue += 10000;
+            }
+            else if (transport->canLoad(u)) {
+                bestValue += 3 * type.gasPrice() + type.mineralPrice();
+            }
+
+            if (value > bestValue) {
+                bestValue = value;
+                bestCarryUnit = u;
+            }
+
+        }
+
+        if (bestCarryUnit) {
+            _currentCarryTargets.emplace(transport->getID(), bestCarryUnit);
+        }
+
+        return true;
+    }
+}
+
+void MicroTransports::maybePickupCarryTarget(BWAPI::Unit transport) {
+    auto it = _currentCarryTargets.find(transport->getID());
+    if (it == _currentCarryTargets.end()) {
         return;
     }
 
-    // All clear. Go do stuff.
-    maybeUnloadTroops();
-    moveTransport();
-    
-    drawTransportInformation();
+    BWAPI::Unit target = it->second;
+    if (!UnitUtil::IsValidUnit(target) || target->isLoaded()) {
+        return;
+    }
+
+    if (transport->getSpaceRemaining() < target->getType().spaceRequired()) {
+        return;
+    }
+
+    // Only try if the shuttle can actually load it.
+    if (transport->canLoad(target)) {
+        the.micro.Load(transport, target);
+    }
 }
+
+void MicroTransports::moveCarryTarget(BWAPI::Unit transport) {
+
+    auto it = _currentCarryTargets.find(transport->getID());
+    if (it == _currentCarryTargets.end()) {
+        return;
+    }
+
+    BWAPI::Unit target = it->second;
+    if (!UnitUtil::IsValidUnit(target)) {
+        return;
+    }
+
+    // If target is not loaded, move near it to pick it up.
+    if (!target->isLoaded()) {
+        the.micro.Move(transport, target->getPosition());
+        return;
+    }
+
+    // If target is loaded, move toward the current destination / squad anchor.
+    if (_target.isValid()) {
+        the.micro.Move(transport, _target);
+    }
+
+}
+
+void MicroTransports::maybeDropCarryTarget(BWAPI::Unit transport) {
+
+    auto it = _currentCarryTargets.find(transport->getID());
+    if (it == _currentCarryTargets.end()) {
+        return;
+    }
+
+    BWAPI::Unit target = it->second;
+    if (!UnitUtil::IsValidUnit(target) || !target->isLoaded()) {
+        return;
+    }
+
+    const int distToTarget = _target.isValid() ? transport->getDistance(_target) : 999999;
+    const int transportHP = transport->getHitPoints() + transport->getShields();
+
+    bool shouldDrop = (distToTarget < 300) || (transportHP < 50); 
+    if (!shouldDrop) {
+        return;
+    }
+
+    if (transport->canUnloadAtPosition(transport->getPosition())) {
+        BWAPI::UnitCommand cmd = transport->getLastCommand();
+        if (cmd.getType() != BWAPI::UnitCommandTypes::Unload_All && cmd.getType() != BWAPI::UnitCommandTypes::Unload_All_Position) {
+            the.micro.UnloadAt(transport, transport->getPosition());
+        }
+    }
+
+}
+
 
 // Called when the transport exists and is not full.
 void MicroTransports::loadTroops()

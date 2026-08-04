@@ -53,10 +53,11 @@ void ProductionManager::update()
 
     /* CODE ADDED */
     // Build zealots pylons if they get killed
-    if (the.selfRace() == BWAPI::Races::Protoss) {
+    if (the.selfRace() == BWAPI::Races::Protoss && _queue.size() > 2) {
+
         if (_lostZealotNum > 0 && the.my.completed.count(BWAPI::UnitTypes::Protoss_Probe) >= 5) {
             
-            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Zealot, 10)) {
+            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Zealot, 10) && getFreeMinerals() >= BWAPI::UnitTypes::Protoss_Zealot.mineralPrice() + 50) {
                 _queue.queueAsHighestPriority(BWAPI::UnitTypes::Protoss_Zealot);
                 _lostZealotNum--;
             }
@@ -64,9 +65,25 @@ void ProductionManager::update()
 
         if (_lostPylonNum > 0 && the.my.completed.count(BWAPI::UnitTypes::Protoss_Probe) >= 5) {
 
-            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Pylon, 3)) {
+            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Pylon, 3) && getFreeMinerals() >= BWAPI::UnitTypes::Protoss_Pylon.mineralPrice()) {
                 _queue.queueAsHighestPriority(BWAPI::UnitTypes::Protoss_Pylon);
                 _lostPylonNum--;
+            }
+        }
+
+        if (_lostProbeNum > 0) {
+
+            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Probe, 5)) {
+                _queue.queueAsHighestPriority(BWAPI::UnitTypes::Protoss_Probe);
+                _lostProbeNum--;
+            }
+        }
+
+        if (_outOfBook && _lostObserverNum > 0 && the.my.completed.count(BWAPI::UnitTypes::Protoss_Probe) >= 5) {
+
+            if (!_queue.anyInNextN(BWAPI::UnitTypes::Protoss_Observer, 5) && getFreeMinerals() >= BWAPI::UnitTypes::Protoss_Observer.mineralPrice() + 50) {
+                _queue.queueAsHighestPriority(BWAPI::UnitTypes::Protoss_Observer);
+                _lostObserverNum--;
             }
         }
     }
@@ -137,6 +154,14 @@ void ProductionManager::onUnitDestroy(BWAPI::Unit unit)
         else if (unit->getType() == BWAPI::UnitTypes::Protoss_Pylon) {
             _lostPylonNum++;
         }
+    }
+
+    if (unit->getType() == BWAPI::UnitTypes::Protoss_Probe && _lostProbeNum < 5 && _outOfBook) {
+        _lostProbeNum++;
+    }
+
+    if (unit->getType() == BWAPI::UnitTypes::Protoss_Observer) {
+        _lostObserverNum++;
     }
 
     // If we're zerg, we break out of the opening in narrow cases.
@@ -775,13 +800,19 @@ BWAPI::Unit ProductionManager::getFarthestUnitFromPosition(const std::vector<BWA
     }
 
     BWAPI::Unit farthestUnit = nullptr;
-    int maxDist(-1);
+    double maxDist = INT_MIN;
 
     for (BWAPI::Unit unit : units)
     {
         UAB_ASSERT(unit != nullptr, "Unit was null");
 
-        int distance = unit->getDistance(farthest);
+        double distance = unit->getDistance(farthest);
+
+        bool isInDanger = false;
+        if (the.bases.getBaseAtTilePosition(unit->getTilePosition())->inWorkerDanger()) isInDanger = true;
+        if (isInDanger) {
+            distance /= 500;
+        }
         if (distance > maxDist)
         {
             farthestUnit = unit;

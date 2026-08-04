@@ -24,6 +24,8 @@ namespace UnitUtil
     bool IsGroundStaticDefense(BWAPI::UnitType type);
     BWAPI::UnitType GetGroundStaticDefenseType(BWAPI::Race race);
 
+    BWAPI::Position getAveragePosition(const BWAPI::Unitset& units);
+
     bool IsCombatSimUnit(const UnitInfo & ui);
     bool IsCombatSimUnit(BWAPI::Unit unit);
     bool IsCombatSimUnit(BWAPI::UnitType type);

@@ -115,11 +115,7 @@ void Squad::update()
         return;
     }
 
-    if (_order.getType() == SquadOrderTypes::Drop)
-    {
-        _microTransports.update();
-        // And fall through to let the rest of the drop squad fight.
-    }
+    _microTransports.update();
 
     // Maybe stim marines and firebats.
     stimIfNeeded();
@@ -141,7 +137,7 @@ void Squad::update()
     {
         if (unit->getType().isDetector() ||
             unit->getType().spaceProvided() > 0 ||
-            unit->getType() == BWAPI::UnitTypes::Protoss_High_Templar ||
+            //unit->getType() == BWAPI::UnitTypes::Protoss_High_Templar ||
             unit->getType() == BWAPI::UnitTypes::Zerg_Queen)
         {
             // Don't cluster detectors, transports, high templar, queens.
@@ -397,6 +393,11 @@ bool Squad::noCombatUnits(const UnitCluster & cluster) const
 // It will try to join another cluster, or to advance toward the goal.
 bool Squad::notNearEnemy(const UnitCluster & cluster)
 {
+    if (cluster.center.getApproxDistance(the.bases.myMain()->getCenter()) <= 17 * 32) {
+        if (the.enemyScoutFollower.getScoutTrapPosition(1) != BWAPI::Positions::None) {
+            return false;
+        }
+    }
     for (BWAPI::Unit unit : cluster.units)
     {
         if (_nearEnemy[unit])
@@ -944,6 +945,54 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
             _regroupStatus = green + std::string("Banzai!");
             return false;
         }
+    }
+
+    if (cluster.center.getApproxDistance(the.bases.myMain()->getCenter()) <= 17 * 32) {
+        if (the.enemyScoutFollower.getScoutTrapPosition(1) != BWAPI::Positions::None) {
+            _regroupStatus = "Get the damn scout";
+            return false;
+        }
+    }
+
+
+    /* CODE ADDED */
+    // Stop DTs undetected from being scared
+    bool isDTOnly = cluster.size() > 0;
+    bool isDetected = false;
+    for (const auto& u : cluster.units) {
+        if (!u->getType().hasPermanentCloak()) {
+            isDTOnly = false;
+            break;
+        }
+        if (u->isUnderAttack()) {
+            isDetected = true;
+            break;
+        }
+    }
+
+    if (isDTOnly && !isDetected) {
+        const int searchRadius = 11 * 32 + cluster.radius + 32; // Highest detector range in the game, plus cluster radius, + 1 tile to prevent waffling
+
+        const auto& enemyForceMap = InformationManager::Instance().getUnitInfo(the.enemy());
+
+        for (const auto& kv : enemyForceMap) {
+            const UnitInfo& ui = kv.second;
+
+            if (!ui.unit || !ui.unit->exists()) continue;
+            if (ui.goneFromLastPosition) continue;
+            if (ui.lastPosition.getApproxDistance(cluster.center) > searchRadius) continue;
+
+            if (ui.isCompleted() && ui.powered && ui.type.isDetector()) {
+                isDetected = true;
+                break;
+            }
+        }
+
+    }
+
+    if (isDTOnly && !isDetected) {
+        _regroupStatus = green + std::string("Undetected invis");
+        return false;
     }
 
     BWAPI::Unit vanguard = unitClosestToTarget(cluster.units);  // cluster vanguard (not squad vanguard)

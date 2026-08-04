@@ -956,25 +956,52 @@ void Micro::CatchAndAttackUnit(BWAPI::Unit attacker, BWAPI::Unit target)
 }
 
 
+int Micro::carrierGetInterceptorsOut(BWAPI::Unit carrier) {
+    if (!carrier || !carrier->exists() || carrier->getType() != BWAPI::UnitTypes::Protoss_Carrier) {
+        return 0;
+    }
+    
+    int count = 0;
+
+    for (BWAPI::Unit u : carrier->getInterceptors()) {
+        if (!u || !u->exists()) continue;
+
+        if (u->getOrder() == BWAPI::Orders::InterceptorAttack || u->getOrder() == BWAPI::Orders::InterceptorReturn) count++;
+    }
+    return count;
+}
+
+std::unordered_map<int, BWAPI::Unit> carrierTarget;
+
 /* CODE ADDED */
 // Special command for carriers to keep attacking while moving, without breaking them as 
 void Micro::CarrierAttackMove(BWAPI::Unit carrier, BWAPI::Unit target, BWAPI::Position movePos) {
-    if (!carrier || !carrier->exists() || !target || !target->exists())
-        return;
-
-    if (carrier->getLastCommandFrame() >= the.now()) {
+    if (!carrier || !carrier->exists() ||
+        carrier->getType() != BWAPI::UnitTypes::Protoss_Carrier) {
         return;
     }
 
-    int frame = the.now();
+    auto& lastTarget = carrierTarget[carrier->getID()];
 
-    // Every few frames, re-issue attack to keep targeting
-    if (frame % 12 == 0 || !carrier->isAttacking()) {
+    // Hard reset when target changes.
+    const bool targetChanged = !lastTarget || !lastTarget->exists() || (lastTarget->getID() != target->getID());
+    if (targetChanged) {
+        
+        carrierTarget[carrier->getID()] = target;
         carrier->attack(target);
+        return;
     }
-    else {
-        carrier->move(movePos);
+
+    // Only re-issue attack occasionally, not every frame.
+    // Let the engine keep the current combat state alive.
+    if (carrierGetInterceptorsOut(carrier) == 0) {
+        carrier->attack(target);
+        carrierTarget[carrier->getID()] = target;
+        return;
     }
+
+    carrier->move(movePos);
+    
 }
 
 

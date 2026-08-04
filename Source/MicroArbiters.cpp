@@ -237,7 +237,9 @@ void MicroArbiters::assignTargets(const BWAPI::Unitset& arbiterUnits, const BWAP
                 }
                 else if (status == ArbiterStatus::LookingToStasis && the.now() - _lastStasisCast >= 30) {
 
-                    BWAPI::Position stasisCastPos = getBestStasisCast(arbiter, targets);
+                    BWAPI::Unitset allPotentialTargets = BWAPI::Broodwar->getUnitsInRadius(arbiter->getPosition(), 12 * 32);
+
+                    BWAPI::Position stasisCastPos = getBestStasisCast(arbiter, allPotentialTargets);
                     if (stasisCastPos.isValid()) {
                         if (arbiter->getDistance(stasisCastPos) <= stasisCastRange && !scheduledStasisCast) {
                             arbiter->useTech(BWAPI::TechTypes::Stasis_Field, stasisCastPos);
@@ -531,8 +533,12 @@ int MicroArbiters::getEnemyFreezeValue(BWAPI::Unit caster, BWAPI::Unit target) {
     // Slope bonus to block ramps
     if (isOnRamp(target->getPosition()) || unitNearChokepoint(target))
         score *= 2;
-
-    return score;
+    if (target->getPlayer() == the.enemy()) {
+        return score;
+    }
+    else {
+        return -score;
+    }
 }
 
 

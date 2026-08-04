@@ -584,7 +584,7 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
     }
     else if (b.type == BWAPI::UnitTypes::Protoss_Pylon) {
         if (b.macroLocation == MacroLocation::Expo) {
-            if (myNatFFEPlaces && myNatFFEPlaces->forgePlan.origin.isValid() && myNatFFEPlaces->pylonPlan.origin.isValid()) {
+            if (myNatFFEPlaces && myNatFFEPlaces->forgePlan.origin.isValid() && myNatFFEPlaces->pylonPlan.origin.isValid() && canBuildHere(myNatFFEPlaces->pylonPlan.origin, b)) {
                 tile = myNatFFEPlaces->pylonPlan.origin;
             }
         }
@@ -618,7 +618,7 @@ BWAPI::TilePosition BuildingPlacer::findSpecialLocation(Building & b)
 /* CODE ADDED */
 BWAPI::TilePosition BuildingPlacer::findForgeLocation(const Building& b) {
 
-    if (myNatFFEPlaces && myNatFFEPlaces->forgePlan.origin.isValid() && myNatFFEPlaces->pylonPlan.origin.isValid()) {
+    if (myNatFFEPlaces && myNatFFEPlaces->forgePlan.origin.isValid() && myNatFFEPlaces->pylonPlan.origin.isValid() && canBuildHere(myNatFFEPlaces->forgePlan.origin, b)) {
         return myNatFFEPlaces->forgePlan.origin;
     }
 
@@ -682,12 +682,16 @@ BWAPI::TilePosition BuildingPlacer::findCanonLocation(const Building& b) {
     BWAPI::TilePosition bestTile = BWAPI::TilePositions::None;
     double bestScore = INT_MIN;
 
-    // Scan 13x13 grid around the in-between point of the forge and the natural
-    for (int dx = -6; dx <= 6; ++dx) {
-        for (int dy = -6; dy <= 6; ++dy) {
+    // Bigger search radius if we have FFE pre-defined, but we'll narrow it down to match bounds
+    const int boundSize = myNatFFEPlaces ? 10 : 6;
+
+    // Scan a grid around the in-between point of the forge and the natural
+    for (int dx = -boundSize; dx <= boundSize; ++dx) {
+        for (int dy = -boundSize; dy <= boundSize; ++dy) {
 
             BWAPI::TilePosition t = start + BWAPI::TilePosition(dx, dy);
             if (!t.isValid()) continue;
+            if (myNatFFEPlaces && !myNatFFEPlaces->cannonBounds.contains(t)) continue;
             if (!canBuildWithSpace(t, b, 0)) continue;
             if (t.getDistance(the.bases.myNatural()->getCenterTile()) < 3) continue;
 
@@ -904,8 +908,11 @@ void BuildingPlacer::InitializeFFE() {
     BWAPI::Position startA = BWAPI::Position(baseChoke->Pos(BWEM::ChokePoint::end1));
     BWAPI::Position startB = BWAPI::Position(baseChoke->Pos(BWEM::ChokePoint::end2));
 
-    BWAPI::TilePosition forgeTileA = findClosestBuildTile(startA, BWAPI::UnitTypes::Protoss_Forge, natural->getCenter());
-    BWAPI::TilePosition forgeTileB = findClosestBuildTile(startB, BWAPI::UnitTypes::Protoss_Forge, natural->getCenter());
+    BWAPI::Position chokeMid = BWAPI::Position(baseChoke->Pos(BWEM::ChokePoint::middle));
+
+
+    BWAPI::TilePosition forgeTileA = findClosestBuildTile(startA, BWAPI::UnitTypes::Protoss_Forge, chokeMid);
+    BWAPI::TilePosition forgeTileB = findClosestBuildTile(startB, BWAPI::UnitTypes::Protoss_Forge, chokeMid);
     
 
     // Closest to front
@@ -919,13 +926,15 @@ void BuildingPlacer::InitializeFFE() {
     BWAPI::TilePosition pylonTile = findBestFFEPylon(forgeTile, natural->getFrontTile(), natural->getCenterTile());
     myNatFFEPlaces->pylonPlan = FFEPlaces::PotentialLoc{ pylonTile, BWAPI::UnitTypes::Protoss_Pylon.tileWidth(), BWAPI::UnitTypes::Protoss_Pylon.tileHeight() };
 
+    myNatFFEPlaces->cannonBounds = FFEPlaces::CannonBounds(BWAPI::Position(baseChoke->Pos(BWEM::ChokePoint::end1)), BWAPI::Position(baseChoke->Pos(BWEM::ChokePoint::end2)), natural->getCenter());
+
 }
 
 
 BWAPI::TilePosition BuildingPlacer::findClosestBuildTile(BWAPI::Position center, BWAPI::UnitType build, BWAPI::Position backAnchor) {
     BWAPI::TilePosition start = BWAPI::TilePosition(center);
 
-    int maxRadius = 5;
+    int maxRadius = 4;
     const int w = build.tileWidth();
     const int h = build.tileHeight();
 
@@ -940,49 +949,33 @@ BWAPI::TilePosition BuildingPlacer::findClosestBuildTile(BWAPI::Position center,
         return true;
         };
 
-    BWAPI::TilePosition bestTile(-1, -1);
+    BWAPI::TilePosition bestTile = BWAPI::TilePositions::None;
     double bestScore = INT_MIN;
 
-    for (int r = 0; r < maxRadius; r++) {
-        for (int dx = -r; dx <= r; dx++) {
-            for (int dy = -r; dy <= r; dy++) {
-                if (abs(dx) != r && abs(dy) != r) continue; // perimeter only
+    for (int r = 0; r < maxRadius; ++r) {
+        for (int dx = -r; dx <= r; ++dx) {
+            for (int dy = -r; dy <= r; ++dy) {
 
-                BWAPI::TilePosition t(start.x + dx, start.y + dy);
-                if (!t.isValid()) continue;
-
-                bool ok = isBuildableFootprint(t);
-                if (!ok) continue;
-
-                BWAPI::TilePosition bestWallTile = t;
-                double bestWallDist = BWAPI::Position(t).getDistance(backAnchor);
-
-                for (int wx = -1; wx <= 1; ++wx) {
-                    for (int wy = -1; wy <= 1; ++wy) {
-                        BWAPI::TilePosition c(t.x + wx, t.y + wy);
-                        if (!c.isValid()) continue;
-                        if (!isBuildableFootprint(c)) continue;
-                        if (!isWallAdjacent(c, BWAPI::UnitTypes::Protoss_Forge)) continue;
-
-                        const double distBack = BWAPI::Position(c).getDistance(backAnchor);
-                        if (distBack > bestWallDist) {
-                            bestWallDist = distBack;
-                            bestWallTile = c;
-                        }
-                    }
-                }
-
-                return bestWallTile;
+                if (abs(dx) != r && abs(dy) != r) continue;
                 
-                //const double distCenter = BWAPI::Position(t).getDistance(center);
-                //const double distBack = BWAPI::Position(t).getDistance(backAnchor);
+                BWAPI::TilePosition t(start.x + dx, start.y + dy);
 
-                //const double score = -3.0 * distCenter - 0.75 * distBack;
+                if (!t.isValid()) continue;
+                if (!isBuildableFootprint(t)) continue;
+                if (!isWallAdjacent(t, build)) continue;
 
-                //if (score > bestScore) {
-                //    bestTile = t;
-                //    bestScore = score;
-                //}
+                // Adjust for center
+                BWAPI::Position tp = BWAPI::Position(t) + BWAPI::Position(48,32);
+
+                double distBack = tp.getDistance(backAnchor);
+
+
+                double score = -distBack;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestTile = t;
+                }
             }
         }
     }
@@ -1001,16 +994,7 @@ BWAPI::TilePosition BuildingPlacer::findBestFFEPylon(BWAPI::TilePosition forge, 
     const int w = 2;
     const int h = 2;
 
-    auto isBuildableFootprint = [&](const BWAPI::TilePosition& t) -> bool {
-        for (int x = 0; x < w; ++x) {
-            for (int y = 0; y < h; ++y) {
-                if (!BWAPI::Broodwar->isBuildable(t.x + x, t.y + y, true)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-        };
+    
 
     for (int dx = -searchField; dx <= searchField; dx++) {
         for (int dy = -searchField; dy <= searchField; dy++) {
@@ -1020,7 +1004,7 @@ BWAPI::TilePosition BuildingPlacer::findBestFFEPylon(BWAPI::TilePosition forge, 
 
             if (p.getDistance(backPos) < 3) continue;
 
-            if (isBuildableFootprint(p)) continue;
+            if (!canBuildHere(p, Building{BWAPI::UnitTypes::Protoss_Pylon, p})) continue;
 
             if (!pylonPowersForge(p, forge)) continue;
 

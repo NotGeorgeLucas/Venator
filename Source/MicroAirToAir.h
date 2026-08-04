@@ -203,6 +203,10 @@ public:
     };
 
 
+    bool isWithinNTilesOfMapEdge(BWAPI::Unit unit, int nTiles) const;
+    BWAPI::Position nearestMapCorner(BWAPI::Position p);
+    BWAPI::Position findCliffAwayFromCorner(BWAPI::Unit unit, BWAPI::Position corner);
+
     int getEnemyWebValue(BWAPI::Unit caster, BWAPI::Unit target);
     // For support webs
     BWAPI::Position getBestWebCast(BWAPI::Unit caster, const std::vector<UnitInfo>& targets);

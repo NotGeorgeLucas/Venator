@@ -251,6 +251,7 @@
     <ClCompile Include="..\Source\EasyBMP_1.06\EasyBMP.cpp">
       <Filter>EasyBMP</Filter>
     </ClCompile>
+    <ClCompile Include="..\Source\EnemyScoutFollower.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Source\CombatCommander.h">
@@ -475,6 +476,7 @@
     <ClInclude Include="..\Source\EasyBMP_1.06\EasyBMP_VariousBMPutilities.h">
       <Filter>EasyBMP</Filter>
     </ClInclude>
+    <ClInclude Include="..\Source\EnemyScoutFollower.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\Source\EasyBMP_1.06\BSD_(revised)_license.txt">

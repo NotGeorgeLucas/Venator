@@ -181,7 +181,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
 
     if (the.enemyRace() == BWAPI::Races::Zerg && numStargate >= 1) {
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, std::min(numCorsairs + 1, 2)));
-        goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + 1));
+        //goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Stargate, numStargate + 1));
         goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Fleet_Beacon, 1));
         goal.push_back(MetaPair(BWAPI::TechTypes::Disruption_Web, 1));
     }
@@ -248,7 +248,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
         }
 
         // Finally add templar archives.
-        if (the.my.all.count(BWAPI::UnitTypes::Protoss_Citadel_of_Adun) > 0)
+        if (the.my.all.count(BWAPI::UnitTypes::Protoss_Citadel_of_Adun) > 0 && the.my.all.count(BWAPI::UnitTypes::Protoss_Assimilator) >= 2)
         {
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Templar_Archives, 1));
         }
@@ -345,7 +345,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
                 }
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Carrier, carrierTarget));
 
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, 3));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, std::min(numCorsairs + (numCorsairs == 0 ? 1 : 2), 3)));
                 goal.push_back(MetaPair(BWAPI::TechTypes::Disruption_Web, 1));
 
             }
@@ -372,21 +372,37 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
 
         if (the.enemyRace() == BWAPI::Races::Terran) {
 
-            if (enemyGoliathCount + enemyWraithCount < 10) {
-                if (numArchives >= 1) {
-                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dark_Templar, numDarkTemplar + 2));
+            bool enemySpamsWraiths = enemyWraithCount >= 4;
+            if (!enemySpamsWraiths) {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Templar_Archives, 1));
+                goal.push_back(MetaPair(BWAPI::TechTypes::Psionic_Storm, 1));
+            }
+            else {
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Observer, 2));
+            }
+
+            if (enemyGoliathCount < 5) {
+                if (!enemySpamsWraiths) {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, std::min(3, numHighTemplar + 2)));
                 }
+                else {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, std::min(7, numCorsairs + 3)));
+                }
+                
                 goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + numGateways));
             }
             else {
-                
-                goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
 
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + std::max(1, numGateways - 4)));
-                if (numArchives >= 1) {
-                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dark_Templar, numDarkTemplar + 3));
+                if (!enemySpamsWraiths) {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, std::min(5, numHighTemplar + 2)));
                 }
-                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 3));
+                else {
+                    goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Corsair, std::min(4, numCorsairs + 2)));
+                }
+                
+
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 1));
+                goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Zealot, numZealots + std::max(1, numGateways - 4)));
 
             }
             
@@ -512,6 +528,10 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
             goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_Dragoon, numDragoons + 4));
         }
         
+        if (enemyDragoonCount > 10) {
+            goal.push_back(MetaPair(BWAPI::TechTypes::Psionic_Storm, 1));
+            goal.push_back(MetaPair(BWAPI::UnitTypes::Protoss_High_Templar, numHighTemplar + 2));
+        }
 
         // Always get range
         goal.push_back(MetaPair(BWAPI::UpgradeTypes::Singularity_Charge, 1));
@@ -540,6 +560,7 @@ const MetaPairVector StrategyManager::getProtossBuildOrderGoal()
     {
         if (hasStargate)
         {
+            goal.push_back(MetaPair(BWAPI::UpgradeTypes::Protoss_Air_Armor, 1));
             if ((numCorsairs < 6 && self->deadUnitCount(BWAPI::UnitTypes::Protoss_Corsair) == 0) ||
                 (numCorsairs < 9 && enemies.count(BWAPI::UnitTypes::Zerg_Mutalisk) > numCorsairs))
             {
@@ -891,8 +912,43 @@ const MetaPairVector StrategyManager::getZergBuildOrderGoal() const
 
 bool _counteredEnemyWraiths = false;
 bool _seenProtossOp = false;
+bool _everSawMutas = false;
 void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
 {
+    /* CODE ADDED */
+    // There's not nearly enough corsairs in PvZ. Let's fix that
+    // This should result in 4 corsairs always, 9 corsairs if we see mutas
+    if (ProductionManager::Instance().isOutOfBook() && the.enemyRace() == BWAPI::Races::Zerg && the.selfRace() == BWAPI::Races::Protoss) {
+        int corsairCount = the.my.all.count(BWAPI::UnitTypes::Protoss_Corsair);
+        if (corsairCount < 9 && queue.size() > 2) {
+            
+            if (the.my.completed.count(BWAPI::UnitTypes::Protoss_Stargate) > 0
+                && the.self()->minerals() >= BWAPI::UnitTypes::Protoss_Corsair.mineralPrice() + 50) {
+
+                int idx = queue.getNextIndex(BWAPI::UnitTypes::Protoss_Corsair);
+
+                if (idx >= 0 && idx > 2 && idx < int(queue.size()) - 1) {
+                    BWAPI::Broodwar->printf("Pulling corsair to front");
+                    queue.pullToTop(idx);
+                }
+                else if (idx < 0 && !queue.isUnitTypeBeingProduced(BWAPI::UnitTypes::Protoss_Corsair)) {
+                    const bool mutaBuildingCondition = (InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Spire, the.enemy())
+                        + InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Greater_Spire, the.enemy()) > 0);
+                    const int mutaCount = InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Mutalisk, the.enemy());
+                    
+                    if (!_everSawMutas && mutaCount > 0) {
+                        _everSawMutas = true;
+                    }
+
+                    if ((!_everSawMutas && mutaBuildingCondition) || mutaCount > 0 || corsairCount < 4) {
+                        BWAPI::Broodwar->printf("Producing corsair for mutas");
+                        queue.queueAsHighestPriority(BWAPI::UnitTypes::Protoss_Corsair);
+                    }
+                }
+            }
+        }
+    }
+
     // This is the enemy plan that we have seen in action.
     OpeningPlan enemyPlan = OpponentModel::Instance().getEnemyPlan();
 
@@ -1014,9 +1070,9 @@ void StrategyManager::handleUrgentProductionIssues(BuildOrderQueue & queue)
         }
 
         // If we have collected too much gas, turn it off.
-        if (ProductionManager::Instance().isOutOfBook() &&
+        if ((ProductionManager::Instance().isOutOfBook() &&
             gas > 400 &&
-            gas > 4 * the.self()->minerals())
+            gas > 4 * the.self()->minerals()) || the.self()->minerals() < 50)
         {
             int queueMinerals, queueGas;
             queue.totalCosts(queueMinerals, queueGas);

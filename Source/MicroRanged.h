@@ -13,11 +13,11 @@ private:
 
 
     /* CODE ADDED */
-    // Information about ranged carrier counters and if we can and should go highground
+    // Information about ranged carrier counters and if we should do out-of-range tricks
     struct CarrierThreatInfo {
         BWAPI::Unitset threats;
-        int maxThreatElevation;
-        bool shouldGoHighground;
+        int maxThreatRange;
+        bool isThreatened;
     };
 
 public:
@@ -72,6 +72,8 @@ public:
             static_cast<int>(sumY / sumLen)
         );
     }
+
+    bool isCarrierThreat(BWAPI::Unit u);
 
     // Returns true if angle difference between vectors is bigger than the given value in degrees
     bool angleDifferenceGreaterThan(const BWAPI::Position& a, const BWAPI::Position& b, double thresholdDegrees) {

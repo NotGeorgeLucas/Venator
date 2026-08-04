@@ -110,9 +110,53 @@ class BuildingPlacer
             }
         };
 
+        struct CannonBounds {
+            BWAPI::TilePosition topLeft;
+            BWAPI::TilePosition bottomRight;
+
+            CannonBounds() {}
+
+            CannonBounds(BWAPI::Position chokeA, BWAPI::Position chokeB, BWAPI::Position center) {
+                // Convert to tile space
+                BWAPI::TilePosition a = BWAPI::TilePosition(chokeA);
+                BWAPI::TilePosition b = BWAPI::TilePosition(chokeB);
+                BWAPI::TilePosition c = BWAPI::TilePosition(center);
+
+                int minX = std::min({ a.x, b.x, c.x });
+                int maxX = std::max({ a.x, b.x, c.x });
+                int minY = std::min({ a.y, b.y, c.y });
+                int maxY = std::max({ a.y, b.y, c.y });
+
+                // Expand slightly toward center side
+                int dx = (c.x < (a.x + b.x) / 2) ? -2 : 2;
+                int dy = (c.y < (a.y + b.y) / 2) ? -2 : 2;
+
+                minX += std::min(0, dx);
+                maxX += std::max(0, dx);
+                minY += std::min(0, dy);
+                maxY += std::max(0, dy);
+
+                // Clamp to avoid negative tiles
+                minX = std::max(0, minX);
+                minY = std::max(0, minY);
+
+                topLeft = BWAPI::TilePosition(minX, minY);
+                bottomRight = BWAPI::TilePosition(maxX, maxY);
+            }
+
+            bool contains(BWAPI::TilePosition p) const {
+                return p.x >= topLeft.x &&
+                    p.y >= topLeft.y &&
+                    p.x <= bottomRight.x &&
+                    p.y <= bottomRight.y;
+            }
+        };
+
 
         PotentialLoc forgePlan;
         PotentialLoc pylonPlan;
+
+        CannonBounds cannonBounds;
 
     };
     

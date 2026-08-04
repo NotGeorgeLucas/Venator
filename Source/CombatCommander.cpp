@@ -1460,10 +1460,13 @@ void CombatCommander::updateBaseDefenseSquads()
         // Proxy pylon at three minutes is a good enough sign. Later we should have zealots, earlier it's cannon rush when we only have probes
         bool cannonRush = proxyPylonNearBase && (the.now() <= 3 * 34 * 60);
 
+
         const bool pullWorkers =
             Config::Micro::WorkersDefendRush &&
-            closestEnemyDistance <= (wePulledWorkers ? workerDist + pullWorkerHysteresis : workerDist) &&
-            (enemyProxy || !sunkenDefender && numZerglingsInOurBase() > 2 || workerRush || cannonRush);
+            ((closestEnemyDistance <= (wePulledWorkers ? workerDist + pullWorkerHysteresis : workerDist) &&
+                (enemyProxy || !sunkenDefender && numZerglingsInOurBase() > 2 || workerRush || cannonRush)) 
+                || the.bases.myNatural()->getNumEnemyNondefenseBuildings() > 0
+                );
 
         if (wePulledWorkers && !pullWorkers)
         {
@@ -1902,6 +1905,57 @@ void CombatCommander::drawSquadInformation(int x, int y)
 // For a squad with ground units, ignore targets which are not accessible by ground.
 SquadOrder CombatCommander::getAttackOrder(Squad * squad)
 {
+
+    /* CODE ADDED */
+    // If the scout is still there and alive, it will spoil the carriers. We need to take that guy out base
+    // 0. Highest priority: kill enemy scout near our base.
+    if (squad && squad->hasGround() && squad->canAttackGround()) {
+        Base* myBase = the.bases.myMain();
+        if (myBase) {
+            BWAPI::Unit scoutTarget = nullptr;
+            int bestDist = INT_MAX;
+
+            for (BWAPI::Unit enemy : the.enemy()->getUnits()) {
+                if (!UnitUtil::IsValidUnit(enemy) ||
+                    !enemy->getPosition().isValid() ||
+                    enemy->isInvincible() ||
+                    enemy->getType().isSpell())
+                {
+                    continue;
+                }
+
+                const int distToBase = enemy->getDistance(myBase->getPosition());
+                if (distToBase > 17 * 32) {
+                    continue;
+                }
+
+                // Define what counts as a scout.
+                const bool isScout = enemy->getType().isWorker();
+
+                if (!isScout) {
+                    continue;
+                }
+
+                if (distToBase < bestDist) {
+                    bestDist = distToBase;
+                    scoutTarget = enemy;
+                }
+            }
+
+            if (scoutTarget) {
+                return SquadOrder(
+                    SquadOrderTypes::Attack,
+                    scoutTarget->getPosition(),
+                    17 * 32,
+                    true,
+                    "Kill scout"
+                );
+            }
+        }
+    }
+
+
+
     // 1. Clear any destructible obstacles around our bases.
     // Most maps don't have any such thing, but see e.g. Arkanoid and Sparkle.
     // Only ground squads are sent to clear obstacles.
@@ -2096,8 +2150,9 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
 			}
 
 			bool enemyOwned = base->getOwner() == the.enemy();
+			int nEnemyBuildings = base->getNumEnemyNondefenseBuildings();
 			// TODO The "attack base buildings" feature needs more work.
-			if (enemyOwned /* || nEnemyBuildings >= 3 */)
+			if (enemyOwned || nEnemyBuildings >= 3)
             {
 				// Higher is better. The score is normally negative.
                 int score = 0;
@@ -2116,7 +2171,6 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
 				}
 
 				// A base with many enemy buildings has higher priority.
-				int nEnemyBuildings = base->getNumEnemyNondefenseBuildings();
 				score += nEnemyBuildings / 8;
 
 				// A base with low remaining minerals is lower priority (even if they don't own it).
@@ -2183,7 +2237,7 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
     // Pure AirToAir units should prefer to attack main if we don't have vision there and there isn't a spore there
     if (the.enemyRace() == BWAPI::Races::Zerg && !canAttackGround && canAttackAir && hasAir) {
         Base* enemyMain = the.bases.enemyStart();
-        if (enemyMain && the.enemyRace() == BWAPI::Races::Zerg) {
+        if (enemyMain && the.enemyRace() == BWAPI::Races::Zerg && InformationManager::Instance().getNumUnits(BWAPI::UnitTypes::Zerg_Mutalisk, the.enemy()) < 1) {
             bool mainHatcheryVisible = false;
             bool isDefended = false;
             const auto& enemies = InformationManager::Instance().getUnitInfo(the.enemy());
@@ -2276,6 +2330,7 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
     for (BWAPI::Unit unit : the.enemy()->getUnits())
     {
         if (unit->getType() == BWAPI::UnitTypes::Zerg_Larva ||
+            unit->getType() == BWAPI::UnitTypes::Terran_Vulture_Spider_Mine || /* CODE ADDED */ // Exception for spider mines
             !unit->isDetected() ||
             unit->isInvincible() ||
             unit->getType().isSpell())
@@ -2319,10 +2374,13 @@ void CombatCommander::getAttackLocation(Squad * squad, Base * & returnBase, BWAP
     {
         const UnitInfo & ui(kv.second);
 
+        bool hasDetection = the.my.completed.count(BWAPI::UnitTypes::Protoss_Observer) + the.my.completed.count(BWAPI::UnitTypes::Zerg_Overlord) + the.my.completed.count(BWAPI::UnitTypes::Terran_Science_Vessel) > 0;
+
         if (ui.updateFrame < the.now() &&
             ui.updateFrame > lastSeenFrame &&
             !ui.goneFromLastPosition &&
             !ui.type.isSpell() &&
+            (!ui.type.hasPermanentCloak() || hasDetection) &&
             (hasAir || the.partitions.id(ui.lastPosition) == squadPartition) &&
             ((ui.type.isFlyer() || ui.lifted) && canAttackAir || (!ui.type.isFlyer() || !ui.lifted) && canAttackGround))
         {

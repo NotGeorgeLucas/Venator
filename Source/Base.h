@@ -161,6 +161,7 @@ public:
     void drawBaseInfo() const;
 
     const BWEM::ChokePoint* getBaseChokepoint() const;
+    const BWAPI::Position getAirUnitEntrance() const;
 };
 
 }
