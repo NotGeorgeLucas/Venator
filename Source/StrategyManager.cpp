@@ -70,6 +70,10 @@ const bool StrategyManager::shouldExpandNow() const
         the.my.all.count(BWAPI::UnitTypes::Protoss_Nexus);
     int minute = the.now() / (24 * 60);
 
+    /* CODE ADDED */
+    // Emergency pre-COG fix
+    int emptyBases = numDepots - the.bases.numBasesWithRemainingMinerals(1000);
+
     // we will make expansion N after array[N] minutes have passed
     std::vector<int> expansionTimes = {4, 10, 15, 20, 24, 28, 35, 40};
 
@@ -81,7 +85,7 @@ const bool StrategyManager::shouldExpandNow() const
         }
     }
 
-    return false;
+    return emptyBases >= 2;
 }
 
 void StrategyManager::addStrategy(const std::string & name, Strategy & strategy)

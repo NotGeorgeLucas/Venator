@@ -162,6 +162,9 @@ void MicroHighTemplar::assignTargets(const BWAPI::Unitset& hts, const BWAPI::Uni
 
 
 bool MicroHighTemplar::shouldRun(BWAPI::Unit ht, const BWAPI::Unitset& targets) {
+
+    if (!the.self()->hasResearched(BWAPI::TechTypes::Psionic_Storm) && !the.self()->hasResearched(BWAPI::TechTypes::Hallucination) && the.enemyRace() != BWAPI::Races::Zerg) return true;
+
     for (BWAPI::Unit u : targets) {
         if (!u || !u->exists()) continue;
 

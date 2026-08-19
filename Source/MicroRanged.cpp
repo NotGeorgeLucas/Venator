@@ -677,6 +677,10 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
             }
         }
 
+        if (UnitUtil::CanAttack(target, rangedUnit) && target->isUnderDisruptionWeb()) {
+            score -= 48;
+        }
+
         if (score > bestScore)
         {
             bestScore = score;
@@ -746,10 +750,8 @@ int MicroRanged::getAttackPriority(BWAPI::Unit rangedUnit, BWAPI::Unit target)
         }
     }
 
-    if (target->isStasised() || target->isMaelstrommed() || target->isUnderDisruptionWeb()) {
-        if (UnitUtil::CanAttack(rangedUnit, target)) {
-            return 1;
-        }
+    if (target->isStasised() || target->isMaelstrommed()) {
+        return 1;
     }
 
     // A carrier should not target an enemy interceptor. It's too hard to hit.

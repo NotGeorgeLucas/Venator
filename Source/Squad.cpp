@@ -336,6 +336,8 @@ void Squad::clusterCombat(const UnitCluster & cluster)
 
         _microLurkers.setTactic(_lurkerTactic);
         _microLurkers.execute(cluster);
+
+        _microHighTemplar.execute(cluster);
     }
     else if (cluster.status == ClusterStatus::Regroup)
     {
@@ -1093,34 +1095,41 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     }
 
     int zealotCount = 0;
+    int cloakCombatantCount = 0;
     int total = 0;
 
-    for (BWAPI::Unit u : cluster.units)
-    {
+    for (BWAPI::Unit u : cluster.units) {
         if (!u) continue;
 
-        total++;
-        if (u->getType() == BWAPI::UnitTypes::Protoss_Zealot)
-        {
+        total += (UnitUtil::CanAttackAir(u) || UnitUtil::CanAttackGround(u));
+        if (u->getType() == BWAPI::UnitTypes::Protoss_Zealot) {
             zealotCount++;
         }
+
+        if (u->getType().hasPermanentCloak() && UnitUtil::CanAttackGround(u)) {
+            cloakCombatantCount++;
+        }
     }
+
+    int nonCloakedUnits = total - cloakCombatantCount;
 
     bool mostlyZealots = total > 0 && zealotCount >= total / 2;
 
     int tankCount = 0;
     int enemyCount = 0;
 
-    for (const auto& kv : InformationManager::Instance()
-        .getUnitData(BWAPI::Broodwar->enemy()).getUnits())
-    {
+    BWAPI::Unitset enemyPhotonCannons;
+
+    for (const auto& kv : InformationManager::Instance().getUnitData(the.enemy()).getUnits()) {
         const UnitInfo& ui = kv.second;
 
-        if (!ui.lastPosition.isValid()) continue;
+        if (!ui.goneFromLastPosition && ui.lastPosition.isValid() && ui.unit && ui.unit->exists() && ui.lastPosition.getDistance(cluster.center) <= 13 * 32) {
 
-        if (cluster.center.getDistance(ui.lastPosition) < 13 * 32)
-        {
-            enemyCount+= !ui.type.isWorker(); // We don't care about workers for this case
+            enemyCount += (!ui.type.isWorker() && ui.type.canAttack() && ui.type != BWAPI::UnitTypes::Terran_Vulture_Spider_Mine); // We don't care about workers for this case
+
+            if (ui.type == BWAPI::UnitTypes::Protoss_Photon_Cannon) {
+                enemyPhotonCannons.insert(ui.unit);
+            }
 
             if (ui.type == BWAPI::UnitTypes::Terran_Siege_Tank_Siege_Mode) // We only count tanks that are in siege mode as these are the vulnerable ones
             {
@@ -1150,6 +1159,10 @@ bool Squad::needsToRegroup(UnitCluster & cluster)
     {
         _regroupStatus = yellow + std::string("Hold near Cannons vs tanks");
         return false; // DO NOT REGROUP, try to force attack
+    }
+
+    if (cloakCombatantCount > 0 && nonCloakedUnits < enemyPhotonCannons.size()) {
+        return true;
     }
     
     // -- --

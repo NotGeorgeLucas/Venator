@@ -1065,3 +1065,26 @@ Bases & Bases::Instance()
     static Bases instance;
     return instance;
 }
+
+
+/* CODE ADDED */
+// Util for expansions
+int Bases::numBasesWithRemainingMinerals(int mineralThreshold) const {
+    int count = 0;
+
+    for (const Base* base : bases)     {
+        if (base->getOwner() == the.self()) {
+            int minerals = 0;
+            for (BWAPI::Unit mineral : base->getMinerals()) {
+                minerals += mineral->getResources();
+            }
+
+            if (minerals > mineralThreshold) {
+                ++count;
+            }
+        }
+
+    }
+
+    return count;
+}

@@ -72,6 +72,7 @@ namespace UAlbertaBot
         void updateSmallMinerals();
 
     public:
+        int numBasesWithRemainingMinerals(int mineralThreshold) const;
 		const int BaseRadius = 24 * 32;		// a position this close, in the same zone, is "in the base"
 
         void initialize();
