@@ -14,6 +14,24 @@ class MicroAirToAir : public MicroManager
 private:
     int _lastDWebFrame = 0;
 
+    struct NavTile {
+        BWAPI::TilePosition tile;
+        float score;
+
+    };
+
+    std::vector<std::vector<NavTile>> _navBox = {};
+
+
+    // Pristine copy of _navBox (tile positions filled in, all scores at the
+    // baseline -5) taken right after executeMicro builds it. assignTargets
+    // resets _navBox to this snapshot before scoring each unit's own threats,
+    // so one corsair's threat-scoring pass can't bleed into another's.
+    std::vector<std::vector<MicroAirToAir::NavTile>> _navBoxBase;
+
+    BWAPI::TilePosition getNextNavNove(int xIdxStart, int yIdxStart, int xIdxGoal, int yIdxGoal);
+    bool safeMoveViaMesh(BWAPI::Unit u, BWAPI::TilePosition target);
+
     struct Threat {
         BWAPI::Position currPos;
         BWAPI::Position predictedPos;
@@ -201,6 +219,37 @@ public:
 
         return true;
     };
+
+    BWAPI::Position lineCircleIntersectionClosestToP0(const BWAPI::Position& p0, const BWAPI::Position& p1,
+        const BWAPI::Position& c, double r) {
+        const double dx = p1.x - p0.x;
+        const double dy = p1.y - p0.y;
+        const double a = dx * dx + dy * dy;
+        if (a < 1e-9)
+            return BWAPI::Positions::None;           // zero-length line: no direction, no intersection
+
+        const double fx = p0.x - c.x;
+        const double fy = p0.y - c.y;
+        const double b = 2.0 * (fx * dx + fy * dy);
+        const double cc = fx * fx + fy * fy - r * r;
+
+        const double disc = b * b - 4.0 * a * cc;
+        if (disc < 0.0)
+            return BWAPI::Positions::None;
+
+        const double s = std::sqrt(disc);
+        const double t1 = (-b - s) / (2.0 * a);      // t1 <= t2 always
+        const double t2 = (-b + s) / (2.0 * a);
+
+        // First intersection ahead of p0 (t >= 0): the exit point if p0 is inside the circle.
+        double t;
+        if (t1 >= 0.0)      t = t1;
+        else if (t2 >= 0.0) t = t2;
+        else                return BWAPI::Positions::None;   // circle is entirely behind p0
+
+        return BWAPI::Position(static_cast<int>(std::lround(p0.x + t * dx)),
+            static_cast<int>(std::lround(p0.y + t * dy)));
+    }
 
 
     bool isWithinNTilesOfMapEdge(BWAPI::Unit unit, int nTiles) const;

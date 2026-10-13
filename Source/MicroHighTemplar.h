@@ -15,7 +15,7 @@ public:
 
     MicroHighTemplar();
     void executeMicro(const BWAPI::Unitset& targets, const UnitCluster& cluster);
-    void assignTargets(const BWAPI::Unitset & hts, const BWAPI::Unitset & targets);
+    void assignTargets(const BWAPI::Unitset & hts, const BWAPI::Unitset & targets, const UnitCluster& cluster);
     void update();
     bool shouldRun(BWAPI::Unit ht, const BWAPI::Unitset& targets);
     BWAPI::Position getBestStormPosition(const BWAPI::Unit& ht, const BWAPI::Unitset& targets);

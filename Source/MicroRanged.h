@@ -20,6 +20,8 @@ private:
         bool isThreatened;
     };
 
+    Base* _currentBaseTarget = nullptr;
+
 public:
 
     MicroRanged();

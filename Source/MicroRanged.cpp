@@ -38,8 +38,6 @@ void MicroRanged::executeMicro(const BWAPI::Unitset & targets, const UnitCluster
 
 static std::map<BWAPI::Unit, BWAPI::Unit> carrierToGoliathMap;
 
-static std::mt19937 gen(std::random_device{}());
-Base* _currentBaseTarget = nullptr;
 void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI::Unitset & targets)
 {
     // The set of potential targets.
@@ -85,7 +83,7 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
     }
 
     int carrierNum = 0;
-    for (BWAPI::Unit u : rangedUnits) {
+    for (BWAPI::Unit u : (*rangedUnits.begin())->getUnitsInRadius(8 * 32, BWAPI::Filter::IsAlly)) {
         carrierNum += (u->getType() == BWAPI::UnitTypes::Protoss_Carrier);
     }
 
@@ -124,7 +122,7 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
 
         /* CODE ADDED */
         // Override logic for going straight for enemy base
-        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 4) {
+        if (rangedUnit->getType() == BWAPI::UnitTypes::Protoss_Carrier && !underBaseThreat() && the.my.completed.count(BWAPI::UnitTypes::Protoss_Carrier) >= 3) {
             if (_currentBaseTarget == nullptr) {
                 _currentBaseTarget = the.bases.enemyStart();
             }
@@ -152,12 +150,6 @@ void MicroRanged::assignTargets(const BWAPI::Unitset & rangedUnits, const BWAPI:
 
                     BWAPI::Broodwar->drawCircle(BWAPI::CoordinateType::Map, enemyBasePos.x, enemyBasePos.y, 32 * 2, BWAPI::Colors::Purple);
 
-                    // If the order is closer than the base, just go there
-                    int orderDist = order->getPosition().getDistance(rangedUnit->getPosition());
-                    if (orderDist < dist) {
-                        the.micro.MoveNear(rangedUnit, order->getPosition());
-                        continue;
-                    }
 
                     if (dist > 2 * 32) {
                         the.micro.MoveNear(rangedUnit, enemyBasePos);
@@ -418,7 +410,7 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
                 
         }
 
-        int desiredDist = std::clamp(closestDist, cInfo.maxThreatRange + 32, 10 * 32);
+        int desiredDist = std::clamp(closestDist, cInfo.maxThreatRange + 32, 12 * 32);
 
         moveTo = closestThreat->getPosition() + (fleeDir * desiredDist);
         
@@ -464,7 +456,7 @@ void MicroRanged::doCarrierAttack(BWAPI::Unit carrier, BWAPI::Unit target, Carri
 // For carriers: Should we change targets?
 bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target) {
 
-    BWAPI::Unit lastTarget;
+    BWAPI::Unit lastTarget = nullptr;
 
     if (target && target->exists()) {
         lastTarget = unit->getLastCommand().getTarget();
@@ -472,8 +464,8 @@ bool MicroRanged::shouldIssueNewOrder(BWAPI::Unit unit, BWAPI::Unit target) {
 
     return !lastTarget ||
         !lastTarget->exists() ||
-        lastTarget->getDistance(unit) >= 10 * 32 ||
-        target->getDistance(unit) >= 10 * 32 ||
+        lastTarget->getDistance(unit) > 12 * 32 ||
+        target->getDistance(unit) > 12 * 32 ||
         std::abs(unit->getVelocityX()) + std::abs(unit->getVelocityY()) == 0 ||
         getAttackPriority(unit, target) > getAttackPriority(unit, lastTarget);
 }
@@ -545,6 +537,26 @@ BWAPI::Unit MicroRanged::getTarget(BWAPI::Unit rangedUnit, const BWAPI::Unitset 
         }
         else {
             score = 5 * 32 * priority - range;
+        }
+
+        /* CODE ADDED */
+        // Bonus for targets that can potentially be killed in one hit.
+        BWAPI::WeaponType weapon = UnitUtil::GetWeapon(rangedUnit, target);
+
+        int estimatedDamage = weapon.damageAmount();
+        int effectiveArmor = target->getType().armor();
+
+        // Include the target's armor upgrades.
+        BWAPI::UpgradeType armorUpgrade = target->getType().armorUpgrade();
+        if (armorUpgrade != BWAPI::UpgradeTypes::None) {
+            effectiveArmor += target->getPlayer()->getUpgradeLevel(armorUpgrade);
+        }
+
+        int damageAfterArmor = std::max(0, estimatedDamage - effectiveArmor);
+
+        if (target->getHitPoints() <= damageAfterArmor &&
+            target->getShields() == 0) {
+            score += 4 * 32; // Strongly prefer targets we can finish off.
         }
 
         /* CODE ADDED */

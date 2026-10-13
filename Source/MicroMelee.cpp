@@ -35,6 +35,117 @@ static bool isCombatMeleeUnit(BWAPI::Unit u) {
     return UnitUtil::CanAttackGround(u);
 }
 
+
+static bool spreadFromTankSplash(BWAPI::Unit zealot, const BWAPI::Unitset& squad, const BWAPI::Unitset& enemies) {
+    const int SIEGE_RANGE = 12 * 32;
+    const int BRAWL_DIST = 3 * 32;   // tank would splash itself here: ignore spreading, hit the tank
+    const int CHARGE_DIST = 5 * 32;   // close enough: stop spreading and let normal targeting run
+    const int CROWD_DIST = 40;       // neighbor within outer splash radius -> worth moving
+    const int STEP = 36;       // size of each sidestep
+    const int SPREAD_FRAMES = 8;        // how long a sidestep is left to play out
+    const int COOLDOWN = 40;       // min frames between sidesteps for one zealot
+
+    static std::unordered_map<int, int> spreadUntil;
+    static std::unordered_map<int, int> nextAllowed;
+
+    const int now = the.now();
+    const int id = zealot->getID();
+
+    // Nearest sieged tank.
+    BWAPI::Unit tank = nullptr;
+    int bestDist = MAX_DISTANCE;
+    for (BWAPI::Unit e : enemies) {
+        if (!e || !e->exists() || e->getType() != BWAPI::UnitTypes::Terran_Siege_Tank_Siege_Mode) continue;
+        int d = zealot->getDistance(e);
+        if (d < bestDist) {
+            bestDist = d;
+            tank = e;
+        }
+    }
+
+    if (!tank || bestDist > SIEGE_RANGE) {
+        return false;
+    }
+
+    // Close to the tank: cancel any sidestep and go full caveman on it.
+    if (bestDist <= BRAWL_DIST) {
+        spreadUntil[id] = 0;
+        the.micro.CatchAndAttackUnit(zealot, tank);
+        return true;
+    }
+
+    if (bestDist <= CHARGE_DIST) {
+        return false;
+    }
+
+    // Let an ongoing sidestep finish before issuing any other order.
+    if (now < spreadUntil[id]) {
+        return true;
+    }
+    if (now < nextAllowed[id]) {
+        return false;
+    }
+
+    // Already hitting something? Keep hitting it.
+    if (zealot->isAttacking() || zealot->isStartingAttack() || zealot->isAttackFrame()) {
+        return false;
+    }
+
+    // Repulsion from crowding neighbors. Only the higher-ID zealot of a pair moves.
+    const BWAPI::Position myPos = zealot->getPosition();
+    double rx = 0.0, ry = 0.0;
+    bool crowded = false;
+
+    for (BWAPI::Unit other : squad) {
+        if (other == zealot || !other->exists()) continue;
+        if (other->getType() != BWAPI::UnitTypes::Protoss_Zealot) continue;
+        if (other->getID() > id) continue;
+
+        double dx = myPos.x - other->getPosition().x;
+        double dy = myPos.y - other->getPosition().y;
+        double d = std::sqrt(dx * dx + dy * dy);
+        if (d >= CROWD_DIST) continue;
+
+        if (d < 1.0) { dx = (id % 2) ? 1.0 : -1.0; dy = 0.0; d = 1.0; }
+
+        double weight = (d <= 25) ? 2.0 : 1.0;   // inside medium radius counts double
+        rx += dx / d * weight;
+        ry += dy / d * weight;
+        crowded = true;
+    }
+
+    if (!crowded) return false;
+
+    // Direction toward the tank.
+    double fx = tank->getPosition().x - myPos.x;
+    double fy = tank->getPosition().y - myPos.y;
+    double flen = std::sqrt(fx * fx + fy * fy);
+    if (flen < 1.0) return false;
+    fx /= flen; fy /= flen;
+
+    // Only keep the sideways part of the repulsion, so spreading doesn't slow the approach.
+    const double px = -fy, py = fx;
+    double side = rx * px + ry * py;
+    if (std::abs(side) < 0.1) side = (id % 2) ? 1.0 : -1.0;
+    side = (side > 0) ? 1.0 : -1.0;
+
+    BWAPI::Position dest(
+        myPos.x + (int)((px * side + fx * 0.5) * STEP),
+        myPos.y + (int)((py * side + fy * 0.5) * STEP));
+    dest = dest.makeValid();
+
+    if (!BWAPI::Broodwar->isWalkable(BWAPI::WalkPosition(dest))) {
+        return false;
+    }
+
+    the.micro.Move(zealot, dest);
+    spreadUntil[id] = now + SPREAD_FRAMES;
+    nextAllowed[id] = now + SPREAD_FRAMES + COOLDOWN;
+    return true;
+}
+
+
+
 int _lastDidCatchMove = 0;
 
 void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::Unitset & targets)
@@ -139,22 +250,31 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
     bool isZealotSquad = zealotNum >= meleeUnits.size() / 2;
 
     int tankCount = 0;
-    for (auto t : targets)
-    {
+    for (auto t : targets) {
         if (t->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Siege_Mode ||
             t->getType() == BWAPI::UnitTypes::Terran_Siege_Tank_Tank_Mode)
         {
             tankCount++;
         }
-        
+
+    }
+
+    int vultureCount = 0;
+    for (auto t : targets) {
+        if (t->getType() == BWAPI::UnitTypes::Terran_Vulture) {
+            vultureCount++;
+        }
+
     }
 
     bool enemyMostlyTanks = false;
+    bool enemyIsVultures = false;
 
-    if (!targets.empty())
-    {
+    if (!targets.empty()) {
         enemyMostlyTanks = (double)tankCount / (double)targets.size() >= 0.65;
+        enemyIsVultures = (double)vultureCount / (double)targets.size() >= 0.85;
     }
+
     enemySquadSize = targets.size();
     enemyTankSquadSize = tankCount;
 
@@ -165,6 +285,90 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
     if (order->isCombatOrder())
     {
         underThreat = squadSafeAgainstTanks ? false : anyUnderThreat(meleeUnits);
+    }
+
+
+    /* CODE ADDED */
+    // Zealots vs vultures: hide behind the closest photon cannon unless we heavily outnumber them.
+    // Vultures kite zealots to death in the open, but a cannon punishes them for coming close.
+    bool hideFromVultures = false;
+    BWAPI::Unit hideCannon = nullptr;
+    BWAPI::Position hidePos = BWAPI::Positions::None;
+
+    const bool zealotsOutnumberVultures = zealotNum >= 2 * vultureCount;
+
+    if (order->isCombatOrder() && enemyIsVultures && isZealotSquad && !zealotsOutnumberVultures) {
+        // Squad center (zealots only) and vulture center.
+        BWAPI::Position squadCenter(0, 0);
+        int zn = 0;
+        for (BWAPI::Unit u : meleeUnits) {
+            if (u->getType() == BWAPI::UnitTypes::Protoss_Zealot) {
+                squadCenter += u->getPosition();
+                zn++;
+            }
+        }
+
+        BWAPI::Position vultureCenter(0, 0);
+        int vn = 0;
+        for (BWAPI::Unit t : targets) {
+            if (t->getType() == BWAPI::UnitTypes::Terran_Vulture) {
+                vultureCenter += t->getPosition();
+                vn++;
+            }
+        }
+
+        if (zn > 0 && vn > 0) {
+            squadCenter = BWAPI::Position(squadCenter.x / zn, squadCenter.y / zn);
+            vultureCenter = BWAPI::Position(vultureCenter.x / vn, vultureCenter.y / vn);
+
+            // Closest completed, powered cannon to the squad.
+            int bestDist = MAX_DISTANCE;
+            const int maxDistAllowed = 10 * 32;
+            for (BWAPI::Unit b : BWAPI::Broodwar->self()->getUnits()) {
+                if (b->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon && b->isCompleted() && b->isPowered()) {
+                    int d = b->getDistance(squadCenter);
+                    if (d < bestDist && d <= maxDistAllowed) {
+                        bestDist = d;
+                        hideCannon = b;
+                    }
+                }
+            }
+
+            if (hideCannon) {
+                // "Behind" = on the side of the cannon facing away from the vultures.
+                const BWAPI::Position cp = hideCannon->getPosition();
+                double dx = cp.x - vultureCenter.x;
+                double dy = cp.y - vultureCenter.y;
+                double len = std::sqrt(dx * dx + dy * dy);
+                if (len < 1.0) {
+                    dx = 1.0; dy = 0.0; len = 1.0;
+                }
+                const double hideDist = 2 * 32;
+                hidePos = BWAPI::Position(
+                    cp.x + (int)(dx / len * hideDist),
+                    cp.y + (int)(dy / len * hideDist));
+                hidePos = hidePos.makeValid();
+                int vulturesUnderCannons = 0;
+                for (BWAPI::Unit t : targets) {
+                    if (t->getType() == BWAPI::UnitTypes::Terran_Vulture) {
+                        bool underCannon = false;
+
+                        int bestDist = MAX_DISTANCE;
+                        for (BWAPI::Unit b : the.self()->getUnits()) {
+                            if (b->getType() == BWAPI::UnitTypes::Protoss_Photon_Cannon && b->isCompleted() && b->isPowered()) {
+                                int d = b->getDistance(squadCenter);
+                                if (d < 6 * 32) {
+                                    underCannon = true; break;
+                                }
+                            }
+                        }
+                        vulturesUnderCannons += (underCannon == true);
+                    }
+
+                }
+                hideFromVultures = (vn - vulturesUnderCannons) < vulturesUnderCannons;
+            }
+        }
     }
 
 
@@ -196,7 +400,7 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
 
         BWAPI::Position trapPosition = the.enemyScoutFollower.getScoutTrapPosition(32);
 
-        if (_lastTrapFrame != the.now() && trapPosition != BWAPI::Positions::None && meleeUnit->getPosition().getApproxDistance(the.bases.myMain()->getCenter()) <= 17 * 32 && the.enemyScoutFollower.getScout()) {
+        if (_lastTrapFrame != the.now() && trapPosition != BWAPI::Positions::None && meleeUnit->getPosition().getApproxDistance(the.bases.myMain()->getCenter()) <= 17 * 32 && the.enemyScoutFollower.getScout() && the.enemyScoutFollower.getScout()->isMoving()) {
             
             auto scout = the.enemyScoutFollower.getScout();
 
@@ -213,6 +417,30 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
                 }
             }
             _lastTrapFrame = the.now();
+            continue;
+        }
+
+        /* CODE ADDED */
+        if (hideFromVultures && meleeUnit->getType() == BWAPI::UnitTypes::Protoss_Zealot) {
+            // If a vulture wanders into the cannon's kill zone, jump it.
+            BWAPI::Unit punishTarget = nullptr;
+            int bestDist = MAX_DISTANCE;
+            for (BWAPI::Unit t : meleeUnitTargets) {
+                if (t->getType() == BWAPI::UnitTypes::Terran_Vulture && hideCannon->getDistance(t) <= 7 * 32) {
+                    int d = meleeUnit->getDistance(t);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        punishTarget = t;
+                    }
+                }
+            }
+
+            if (punishTarget) {
+                the.micro.CatchAndAttackUnit(meleeUnit, punishTarget);
+            }
+            else if (meleeUnit->getDistance(hidePos) > 32) {
+                the.micro.Move(meleeUnit, hidePos);
+            }
             continue;
         }
 
@@ -239,13 +467,16 @@ void MicroMelee::assignTargets(const BWAPI::Unitset & meleeUnits, const BWAPI::U
             }
             else
             {
-                BWAPI::Unit target = getTarget(meleeUnit, meleeUnitTargets, underThreat);
-                if (target)
-                {
+                // Zealots vs sieged tanks: avoid clumping under the same shell.
+                if (meleeUnit->getType() == BWAPI::UnitTypes::Protoss_Zealot && spreadFromTankSplash(meleeUnit, meleeUnits, targets)) {
+                    continue;
+                }
+
+                BWAPI::Unit target = getTarget(meleeUnit, meleeUnitTargets, underThreat); 
+                if (target) {
                     the.micro.CatchAndAttackUnit(meleeUnit, target);
                 }
-                else if (meleeUnit->getDistance(order->getPosition()) > 96)
-                {
+                else if (meleeUnit->getDistance(order->getPosition()) > 96) {
                     // There are no targets. Move to the order position if not already close.
                     the.micro.Move(meleeUnit, order->getPosition());
                 }

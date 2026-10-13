@@ -361,6 +361,7 @@ void Squad::clusterCombat(const UnitCluster & cluster)
 
         _microArbiters.regroup(_regroupPosition, cluster);
         _microDarkArchon.regroup(_regroupPosition, cluster);
+        _microHighTemplar.regroup(_regroupPosition, cluster);
 
         // Aggressive lurkers do not regroup, but always execute their order.
         if (_lurkerTactic == LurkerTactic::Aggressive)
@@ -520,7 +521,11 @@ void Squad::moveCluster(const UnitCluster & cluster, const BWAPI::Position & des
             unit->getType() != BWAPI::UnitTypes::Protoss_Arbiter &&
             !_microDefilers.getUnits().contains(unit))      // defilers plus defiler food
         {
-            //if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair && the.enemyRace() != BWAPI::Races::Zerg) continue;
+            if (unit->getType() == BWAPI::UnitTypes::Protoss_High_Templar) {
+                the.micro.MoveNear(unit, cluster.center);   // stay with the army, don't lead it
+                continue;
+            }
+            
             if (!UnitUtil::MobilizeUnit(unit))
             {
                 if (lazy)
@@ -618,10 +623,13 @@ bool Squad::unreadyUnit(BWAPI::Unit u)
         // ONLY treat carrier as "unready" before combat,
         // when interceptor count is critically low.
         bool nearEnemy = _nearEnemy.find(u) != _nearEnemy.end() && _nearEnemy[u];
+        nearEnemy = nearEnemy || the.hits(u) || u->isUnderAttack();
 
-        if ((!nearEnemy && interceptors < 3) || (nearEnemy && interceptors == 0)) {
-            // Stay behind until minimally armed.
-            the.micro.Move(u, finalRegroupPosition(_units));
+        if (interceptors < 4) {
+            if (nearEnemy) {
+                // Stay behind until minimally armed.
+                the.micro.Move(u, the.bases.myMain()->getPosition());
+            }
             return true;
         }
 
@@ -1310,40 +1318,11 @@ BWAPI::Position Squad::finalRegroupPosition(BWAPI::Unitset squad) const
 {
     // Retreat to the main base, unless we change our mind below.
     Base * base = the.bases.myMain();
-    
-
-    /* CODE ADDED */
-    // Carriers can't attack if they don't have interceptors so it doesn't make sense to retreat them to natural since they can't attack like other units
-    int unitCount = 0, carrierCount = 0, interceptorCount = 0;
-
-    for (BWAPI::Unit u : squad) {
-        if (!u->getType().isWorker() && !(u->getType() == BWAPI::UnitTypes::Protoss_Interceptor)) {
-            if (u->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
-                carrierCount++;
-                if (u->getInterceptorCount()) {
-                    interceptorCount += u->getInterceptorCount();
-                }
-            }
-            unitCount++;
-        }
-    }
-
-    bool isCarrierSquad = false;
-    bool isWeakCarrierSquad = false;
-
-    if (unitCount > 0) {
-        isCarrierSquad = (double)carrierCount / unitCount >= 0.5;
-    }
-
-    if (carrierCount > 0) {
-        isWeakCarrierSquad = (double)interceptorCount / carrierCount <= 2.0;
-    }
 
 
     // If the natural has been taken, retreat there instead.
     Base * natural = the.bases.myNatural();
-    if (natural && natural->getOwner() == the.self() && natural->getDepot() && !natural->getDepot()->isBeingConstructed()
-        && !(isCarrierSquad && isWeakCarrierSquad))
+    if (natural && natural->getOwner() == the.self() && natural->getDepot() && !natural->getDepot()->isBeingConstructed())
     {
         base = natural;
     }
@@ -1464,7 +1443,7 @@ bool Squad::unitNearEnemy(BWAPI::Unit unit)
 
     /* CODE ADDED */
     // Exception to keep corsairs from getting stuck sometimes
-    if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair) {
+    if (unit->getType() == BWAPI::UnitTypes::Protoss_Corsair || unit->getType() == BWAPI::UnitTypes::Protoss_Carrier) {
         safeDistance *= 2.5;
     }
 
@@ -1553,6 +1532,7 @@ BWAPI::Unit Squad::unitClosestToPosition(const BWAPI::Position & pos, const BWAP
             unit->getType() == BWAPI::UnitTypes::Terran_Medic ||
             unit->getType() == BWAPI::UnitTypes::Protoss_High_Templar ||
             unit->getType() == BWAPI::UnitTypes::Protoss_Corsair ||
+            unit->getType() == BWAPI::UnitTypes::Protoss_Carrier ||
             unit->getType() == BWAPI::UnitTypes::Protoss_Dark_Archon ||
             unit->getType() == BWAPI::UnitTypes::Zerg_Defiler ||
             unit->getType() == BWAPI::UnitTypes::Zerg_Queen)

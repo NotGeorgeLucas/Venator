@@ -7,8 +7,6 @@
 
 using namespace UAlbertaBot;
 
-// For now, all this does is immediately merge high templar into archons.
-
 MicroHighTemplar::MicroHighTemplar()
 { 
 }
@@ -16,7 +14,22 @@ MicroHighTemplar::MicroHighTemplar()
 void MicroHighTemplar::update()
 {
 
-    for (BWAPI::Unit ht : getUnits()) {
+    BWAPI::Unitset lowHealthHTs = BWAPI::Unitset();
+    for (auto templar : getUnits()) {
+        if (templar->getHitPoints() != BWAPI::UnitTypes::Protoss_High_Templar.maxHitPoints() || templar->getShields() <= 6) {
+            lowHealthHTs.insert(templar);
+            continue;
+        }
+
+        if (the.hits(templar) && templar->getShields() <= 10) {
+            lowHealthHTs.insert(templar);
+            continue;
+        }
+    }
+
+    BWAPI::Unitset morphableHTs = the.enemyRace() == BWAPI::Races::Zerg ? getUnits() : lowHealthHTs;
+
+    for (BWAPI::Unit ht : morphableHTs) {
         if (!ht || !ht->exists())
             continue;
 
@@ -36,9 +49,9 @@ void MicroHighTemplar::update()
         _previousEnergy[ht] = currentEnergy;
     }
 
-    if (the.enemyRace() == BWAPI::Races::Zerg) {
+    if (the.enemyRace() == BWAPI::Races::Zerg || lowHealthHTs.size() >= 2) {
 
-        if (getUnits().size() < 2)
+        if (morphableHTs.size() < 2)
         {
             // Takes 2 high templar to merge one archon.
             return;
@@ -51,7 +64,7 @@ void MicroHighTemplar::update()
 
         BWAPI::Unitset mergeGroup;
 
-        for (const auto templar : getUnits())
+        for (const auto templar : morphableHTs)
         {
             const int framesSinceCommand = BWAPI::Broodwar->getFrameCount() - templar->getLastCommandFrame();
             const bool longEnough = framesSinceCommand >= 12;
@@ -130,33 +143,38 @@ void MicroHighTemplar::executeMicro(const BWAPI::Unitset& targets, const UnitClu
         return;
     }
 
-    assignTargets(hts, targets);
+    assignTargets(hts, targets, cluster);
 }
 
 
-void MicroHighTemplar::assignTargets(const BWAPI::Unitset& hts, const BWAPI::Unitset& targets) {
+void MicroHighTemplar::assignTargets(const BWAPI::Unitset& hts, const BWAPI::Unitset& targets, const UnitCluster& cluster) {
     for (BWAPI::Unit ht : hts) {
         if (!ht || !ht->exists()) continue;
 
-        if (shouldRun(ht, targets)) {
-            the.micro.Move(ht, the.bases.myMain()->getPosition());
+        // Let an in-progress cast finish
+        if (ht->getOrder() == BWAPI::Orders::CastPsionicStorm ||
+            (ht->getLastCommand().getType() == BWAPI::UnitCommandTypes::Use_Tech_Position &&
+                the.now() - ht->getLastCommandFrame() < 12))
             continue;
-        }
 
-        if (the.self()->hasResearched(BWAPI::TechTypes::Psionic_Storm) && ht->getEnergy() >= 75) {
-            if (the.now() - _lastStormCast >= 24) {
-                BWAPI::Position stormTargetPoint = getBestStormPosition(ht, targets);
-                if (stormTargetPoint != BWAPI::Positions::None) {
-                    ht->useTech(BWAPI::TechTypes::Psionic_Storm, stormTargetPoint);
-                    BWAPI::Broodwar->drawBoxMap(stormTargetPoint - BWAPI::Position(48, 48), stormTargetPoint + BWAPI::Position(48, 48), BWAPI::Colors::Blue);
-                    if (ht->getDistance(stormTargetPoint) < 10 * 32) {
-                    }
-                }
+        // Cast first, if a target is in range
+        if (the.self()->hasResearched(BWAPI::TechTypes::Psionic_Storm) &&
+            ht->getEnergy() >= 75 && the.now() - _lastStormCast >= 24)
+        {
+            BWAPI::Position p = getBestStormPosition(ht, targets);
+            if (p != BWAPI::Positions::None) {
+                ht->useTech(BWAPI::TechTypes::Psionic_Storm, p);
+                _lastStormCast = the.now();   // stop other HTs double-casting
+                continue;                     // don't fall through to Move
             }
         }
 
-        // default: just follow army
-        the.micro.MoveNear(ht, order->getPosition());
+        if (shouldRun(ht, targets)) {
+            the.micro.Move(ht, cluster.center);   // toward friends, not the main
+            continue;
+        }
+
+        the.micro.MoveNear(ht, cluster.center);
     }
 }
 
@@ -182,48 +200,29 @@ bool MicroHighTemplar::shouldRun(BWAPI::Unit ht, const BWAPI::Unitset& targets) 
 BWAPI::Position MicroHighTemplar::getBestStormPosition(const BWAPI::Unit & ht, const BWAPI::Unitset& targets) {
     if (targets.empty()) return BWAPI::Positions::None;
 
-    int bestScore = std::numeric_limits<int>::min();
+    const int castRange = 9 * 32 - 16;   // never walk in to cast
+    const int stormRadius = 48;
+
+    double bestScore = 0.0;
     BWAPI::Position bestPos = BWAPI::Positions::None;
 
     for (BWAPI::Unit centerUnit : targets) {
-        if (!centerUnit || !centerUnit->exists())
-            continue;
+        if (!centerUnit || !centerUnit->exists() || centerUnit->getType().isBuilding()) continue;
 
-        if (centerUnit->getType().isBuilding())
-            continue;
+        const BWAPI::Position center = centerUnit->getPosition();
+        if (ht->getDistance(center) > castRange) continue;
 
-        BWAPI::Position center = centerUnit->getPosition();
+        double score = 0;
+        for (BWAPI::Unit u : targets)
+            if (u && u->exists() && u->getDistance(center) <= stormRadius)
+                score += getStormValue(u);
 
-        int score = 0;
-
-        for (BWAPI::Unit u : targets) {
-            if (!u || !u->exists())
-                continue;
-
-            if ((std::abs(u->getPosition().x - center.x) > 48) && (std::abs(u->getPosition().y - center.y) > 48))
-                continue;
-
-            int unitScore = getStormValue(u);
-            if (u->getDistance(ht) <= 10 * 32 + 16) {
-                unitScore *= 1.5;
-            }
-            score += unitScore;
-        }
-
-        for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(center, 70, BWAPI::Filter::IsAlly)) {
-            if ((std::abs(u->getPosition().x - center.x) > 48) && (std::abs(u->getPosition().y - center.y) > 48) && u->getType() != BWAPI::UnitTypes::Protoss_Interceptor)
-                continue;
+        for (BWAPI::Unit u : BWAPI::Broodwar->getUnitsInRadius(center, stormRadius, BWAPI::Filter::IsOwned))
             score -= 67;
-        }
 
-        if (score > bestScore) {
-            bestScore = score;
-            bestPos = center;
-        }
+        if (score > bestScore) { bestScore = score; bestPos = center; }
     }
-
-    // Don't waste storms.
-    return bestScore >= 80 ? bestPos : BWAPI::Positions::None;
+    return bestScore >= 80.0 ? bestPos : BWAPI::Positions::None;
 }
 
 
@@ -305,10 +304,5 @@ int MicroHighTemplar::getStormValue(BWAPI::Unit u) {
         }
     }
 
-    if (!inUnderStorm) {
-        return score;
-    }
-    else {
-        return -score;
-    }
+    return u->isUnderStorm() ? -score : score;
 }
